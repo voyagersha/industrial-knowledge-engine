@@ -1,20 +1,30 @@
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from config import logger
+from neo4j import GraphDatabase
+import config
 
 # Initialize Flask app
 app = Flask(__name__)
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# Initialize Neo4j driver
+driver = None
+try:
+    driver = GraphDatabase.driver(
+        config.NEO4J_URI,
+        auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
+    )
+    # Test connection
+    with driver.session() as session:
+        result = session.run("RETURN 1")
+        result.single()
+    logger.info("Successfully connected to Neo4j")
+except Exception as e:
+    logger.error(f"Failed to connect to Neo4j: {str(e)}")
 
 # Routes
 @app.route('/test')
@@ -29,7 +39,7 @@ def home():
 
 # Register all other routes
 from routes import register_routes
-register_routes(app)
+register_routes(app, driver)
 
 if __name__ == '__main__':
     logger.info("Starting Flask application...")

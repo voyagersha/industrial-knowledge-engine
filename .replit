@@ -40,7 +40,6 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python api/app.py"
-waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -69,7 +68,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "neo4j start --config-dir=./ --config=neo4j.conf"
+args = "neo4j console"
 
 [[ports]]
 localPort = 5000
