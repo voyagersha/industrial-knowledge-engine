@@ -11,6 +11,8 @@ from sqlalchemy import text
 from models import Node, Edge, db
 
 logger = logging.getLogger(__name__)
+# Set logging to DEBUG level to capture all information
+logging.basicConfig(level=logging.DEBUG)
 
 class ChatHandler:
     def __init__(self, db):
@@ -100,29 +102,32 @@ class ChatHandler:
     def _get_relevant_context(self, query: str) -> Dict:
         """Get relevant context based on query analysis."""
         try:
+            logger.debug(f"Starting _get_relevant_context for query: {query}")
+
             # Analyze query intent
             intents = self._analyze_query_intent(query)
             logger.debug(f"Query intents: {intents}")
 
             # Get query embedding
             query_embedding = self._get_embedding(query)
+            logger.debug(f"Generated query embedding")
 
             primary_intent = max(intents.items(), key=lambda x: x[1])[0]
             logger.info(f"Primary intent detected: {primary_intent}")
 
-            if primary_intent == 'facility':
-                return self._get_facility_context(query)
-            elif primary_intent == 'asset':
-                return self._get_asset_context(query, query_embedding)
-            elif primary_intent == 'maintenance':
-                return self._get_maintenance_context(query, query_embedding)
-            elif primary_intent == 'personnel':
-                return self._get_personnel_context(query, query_embedding)
+            context = None
+            if primary_intent == 'asset':
+                context = self._get_asset_context(query, query_embedding)
+            elif primary_intent == 'facility':
+                context = self._get_facility_context(query)
             else:
-                return self._get_general_context(query_embedding)
+                context = self._get_general_context(query_embedding)
+
+            logger.debug(f"Retrieved context: {json.dumps(context, indent=2)}")
+            return context
 
         except Exception as e:
-            logger.error(f"Error getting context: {str(e)}")
+            logger.error(f"Error getting context: {str(e)}", exc_info=True)
             raise
 
     def _get_facility_context(self, query: str) -> Dict:
@@ -165,11 +170,15 @@ class ChatHandler:
     def _get_asset_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get asset-specific context."""
         try:
-            # Query all assets from the database
+            logger.debug("Starting asset context retrieval")
+
+            # Get all assets from the database
             assets = Node.query.filter_by(type='Asset').all()
+            logger.debug(f"Found {len(assets)} assets in database")
 
             asset_contexts = []
             for asset in assets:
+                logger.debug(f"Processing asset: {asset.label}")
                 asset_data = {
                     'asset': asset.label,
                     'facility': None,
@@ -200,15 +209,14 @@ class ChatHandler:
 
                 asset_contexts.append(asset_data)
 
-            logger.info(f"Retrieved {len(asset_contexts)} assets from the database")
+            logger.info(f"Retrieved {len(asset_contexts)} assets with their context")
             return {
                 "type": "asset_context",
-                "data": asset_contexts,
-                "query_embedding": query_embedding
+                "data": asset_contexts
             }
 
         except Exception as e:
-            logger.error(f"Error getting asset context: {str(e)}")
+            logger.error(f"Error in _get_asset_context: {str(e)}", exc_info=True)
             raise
 
     def _get_maintenance_context(self, query: str, query_embedding: List[float]) -> Dict:
@@ -253,29 +261,24 @@ class ChatHandler:
             context = self._get_relevant_context(user_query)
             logger.debug(f"Retrieved context: {context}")
 
-            if "error" in context:
-                return {
-                    "response": f"Error: {context['error']}. Please try rephrasing your question.",
-                    "context": str(context)
-                }
-
             # Format context for GPT
             formatted_context = self._format_context_for_gpt(context)
             logger.debug(f"Formatted context: {formatted_context}")
 
-            # Generate response using GPT-4
             system_message = """You are an expert in enterprise asset management and maintenance operations.
             When analyzing and responding to queries:
             1. Focus on the most relevant information based on the query intent
             2. Highlight key relationships between assets, facilities, and work orders
             3. Provide specific details about maintenance history when relevant
             4. Include actionable insights based on the available data
-            5. Keep responses clear, structured, and focused on the user's needs"""
+            5. Keep responses clear, structured, and focused on the user's needs
+
+            If the context is empty or contains no assets, explicitly state that no assets were found in the knowledge graph."""
 
             try:
                 logger.info("Sending request to OpenAI")
                 response = self.openai.chat.completions.create(
-                    model="gpt-4-turbo-preview",  # Updated to latest model
+                    model="gpt-4-turbo-preview",
                     messages=[
                         {"role": "system", "content": system_message},
                         {
@@ -299,11 +302,11 @@ class ChatHandler:
                 }
 
             except Exception as e:
-                logger.error(f"OpenAI API error: {str(e)}")
+                logger.error(f"OpenAI API error: {str(e)}", exc_info=True)
                 raise
 
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
+            logger.error(f"Error generating response: {str(e)}", exc_info=True)
             return {
                 "error": "Failed to process your question",
                 "details": str(e)
