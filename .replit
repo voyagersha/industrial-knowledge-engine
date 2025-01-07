@@ -23,6 +23,10 @@ args = "API Server"
 task = "workflow.run"
 args = "Frontend Dev Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Neo4j Server"
+
 [[workflows.workflow]]
 name = "API Server"
 author = "agent"
@@ -52,6 +56,20 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "cd frontend && npm run dev"
 waitForPort = 5173
+
+[[workflows.workflow]]
+name = "Neo4j Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "neo4j start --config-dir=./ --config=neo4j.conf"
 
 [[ports]]
 localPort = 5000

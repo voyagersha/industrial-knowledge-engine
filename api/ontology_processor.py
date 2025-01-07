@@ -1,75 +1,118 @@
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import re
+import logging
 
-def extract_entities(df: pd.DataFrame) -> List[tuple]:
+logger = logging.getLogger(__name__)
+
+def clean_text(text: str) -> str:
+    """Clean and normalize text values."""
+    if pd.isna(text):
+        return ""
+    return str(text).strip()
+
+def extract_entities(df: pd.DataFrame) -> List[Tuple[str, str]]:
     """Extract entities from work order data with meaningful types."""
     entities = set()
 
-    # Add assets as entities
+    # Process each row
     for _, row in df.iterrows():
+        # Asset entities
         if pd.notna(row.get('Asset ID')) and pd.notna(row.get('Asset Name')):
-            entities.add((str(row['Asset Name']), 'Asset'))
+            asset_name = clean_text(row['Asset Name'])
+            if asset_name:
+                entities.add((asset_name, 'Asset'))
 
+        # Facility entities
         if pd.notna(row.get('Facility Name')):
-            entities.add((str(row['Facility Name']), 'Facility'))
+            facility_name = clean_text(row['Facility Name'])
+            if facility_name:
+                entities.add((facility_name, 'Facility'))
 
+        # Department entities
         if pd.notna(row.get('Department')):
-            entities.add((str(row['Department']), 'Department'))
+            department = clean_text(row['Department'])
+            if department:
+                entities.add((department, 'Department'))
 
-        if pd.notna(row.get('Workstation Name')):
-            entities.add((str(row['Workstation Name']), 'Workstation'))
+        # Work Order entities
+        if pd.notna(row.get('Work Order ID')):
+            wo_id = f"WO_{clean_text(row['Work Order ID'])}"
+            entities.add((wo_id, 'WorkOrder'))
 
+        # Personnel entities
         if pd.notna(row.get('Assigned To')):
-            entities.add((str(row['Assigned To']), 'Personnel'))
+            personnel = clean_text(row['Assigned To'])
+            if personnel:
+                entities.add((personnel, 'Personnel'))
 
-    return list(entities)
+    logger.debug(f"Extracted {len(entities)} entities")
+    return sorted(list(entities))
 
 def extract_relationships(df: pd.DataFrame) -> List[Dict]:
     """Extract relationships between entities."""
     relationships = []
 
     for _, row in df.iterrows():
+        # Work Order to Asset relationship
+        if pd.notna(row.get('Work Order ID')) and pd.notna(row.get('Asset Name')):
+            wo_id = f"WO_{clean_text(row['Work Order ID'])}"
+            asset_name = clean_text(row['Asset Name'])
+            if wo_id and asset_name:
+                relationships.append({
+                    'source': wo_id,
+                    'target': asset_name,
+                    'type': 'MAINTAINS'
+                })
+
         # Asset to Facility relationship
         if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Facility Name')):
-            relationships.append({
-                'source': str(row['Asset Name']),
-                'target': str(row['Facility Name']),
-                'type': 'LOCATED_IN'
-            })
+            asset_name = clean_text(row['Asset Name'])
+            facility_name = clean_text(row['Facility Name'])
+            if asset_name and facility_name:
+                relationships.append({
+                    'source': asset_name,
+                    'target': facility_name,
+                    'type': 'LOCATED_IN'
+                })
 
         # Asset to Department relationship
         if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Department')):
-            relationships.append({
-                'source': str(row['Asset Name']),
-                'target': str(row['Department']),
-                'type': 'BELONGS_TO'
-            })
+            asset_name = clean_text(row['Asset Name'])
+            department = clean_text(row['Department'])
+            if asset_name and department:
+                relationships.append({
+                    'source': asset_name,
+                    'target': department,
+                    'type': 'BELONGS_TO'
+                })
 
-        # Workstation to Department relationship
-        if pd.notna(row.get('Workstation Name')) and pd.notna(row.get('Department')):
-            relationships.append({
-                'source': str(row['Workstation Name']),
-                'target': str(row['Department']),
-                'type': 'ASSIGNED_TO'
-            })
+        # Work Order to Personnel relationship
+        if pd.notna(row.get('Work Order ID')) and pd.notna(row.get('Assigned To')):
+            wo_id = f"WO_{clean_text(row['Work Order ID'])}"
+            personnel = clean_text(row['Assigned To'])
+            if wo_id and personnel:
+                relationships.append({
+                    'source': wo_id,
+                    'target': personnel,
+                    'type': 'ASSIGNED_TO'
+                })
 
-        # Work Order to Asset relationship
-        if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Work Order ID')):
-            relationships.append({
-                'source': f"WO_{row['Work Order ID']}",
-                'target': str(row['Asset Name']),
-                'type': 'MAINTAINS'
-            })
-
+    logger.debug(f"Extracted {len(relationships)} relationships")
     return relationships
 
 def extract_ontology(df: pd.DataFrame) -> Dict:
     """Extract ontology from work order data."""
+    logger.info("Starting ontology extraction")
+
+    entities = extract_entities(df)
+    relationships = extract_relationships(df)
+
     ontology = {
-        'entities': extract_entities(df),
-        'relationships': extract_relationships(df),
-        'attributes': list(df.columns)  # Include all columns as potential attributes
+        'entities': entities,
+        'relationships': relationships,
+        'attributes': list(df.columns)
     }
 
+    logger.info(f"Completed ontology extraction: {len(entities)} entities, {len(relationships)} relationships")
     return ontology
