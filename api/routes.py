@@ -3,8 +3,10 @@ import pandas as pd
 from ontology_processor import extract_ontology
 from graph_generator import generate_knowledge_graph
 from config import logger
+from models import Node, Edge
+from database import db
 
-def register_routes(app, driver):
+def register_routes(app):
     @app.route('/upload', methods=['POST'])
     def upload_file():
         logger.info("Upload endpoint hit")
@@ -51,66 +53,55 @@ def register_routes(app, driver):
 
     @app.route('/export-neo4j', methods=['POST'])
     def export_to_neo4j():
-        logger.info("Export to Neo4j endpoint hit")
+        logger.info("Export to database endpoint hit")
         try:
-            if not driver:
-                return jsonify({
-                    'error': 'Neo4j connection not available. Please check the server logs.'
-                }), 503
-
             data = request.json
             graph_data = data.get('graph', {})
-            logger.info("Received graph for Neo4j export")
+            logger.info("Received graph for database export")
 
             try:
-                with driver.session() as session:
-                    # Clear existing graph
-                    session.run("MATCH (n) DETACH DELETE n")
-                    logger.info("Cleared existing graph data")
+                # Clear existing data
+                Node.query.delete()
+                Edge.query.delete()
+                db.session.commit()
+                logger.info("Cleared existing graph data")
 
-                    # Create nodes
-                    nodes = {}
-                    for node_data in graph_data['nodes']:
-                        logger.debug(f"Creating node: {node_data}")
-                        result = session.run(
-                            """
-                            CREATE (n:Entity {
-                                id: $id,
-                                label: $label,
-                                type: $type
-                            })
-                            RETURN n
-                            """,
-                            id=node_data['id'],
-                            label=node_data['label'],
-                            type=node_data['type']
-                        )
-                        nodes[node_data['id']] = result.single()['n']
+                # Create nodes
+                nodes = {}
+                for node_data in graph_data['nodes']:
+                    logger.debug(f"Creating node: {node_data}")
+                    node = Node(
+                        label=node_data['label'],
+                        type=node_data['type'],
+                        properties={'id': node_data['id']}
+                    )
+                    db.session.add(node)
+                    nodes[node_data['id']] = node
 
-                    # Create relationships
-                    for edge in graph_data['edges']:
-                        logger.debug(f"Creating relationship: {edge['source']} -{edge['type']}-> {edge['target']}")
-                        session.run(
-                            """
-                            MATCH (source:Entity {id: $source_id})
-                            MATCH (target:Entity {id: $target_id})
-                            CREATE (source)-[r:RELATES_TO {type: $type}]->(target)
-                            """,
-                            source_id=edge['source'],
-                            target_id=edge['target'],
-                            type=edge['type']
-                        )
+                db.session.commit()
 
-                return jsonify({'message': 'Graph exported to Neo4j successfully'})
+                # Create relationships
+                for edge in graph_data['edges']:
+                    logger.debug(f"Creating relationship: {edge['source']} -{edge['type']}-> {edge['target']}")
+                    new_edge = Edge(
+                        source=nodes[edge['source']],
+                        target=nodes[edge['target']],
+                        type=edge['type']
+                    )
+                    db.session.add(new_edge)
+
+                db.session.commit()
+                return jsonify({'message': 'Graph exported to database successfully'})
 
             except Exception as e:
-                logger.error(f"Error during Neo4j export: {str(e)}")
+                logger.error(f"Error during database export: {str(e)}")
+                db.session.rollback()
                 raise
 
         except Exception as e:
-            logger.error(f"Error exporting to Neo4j: {str(e)}")
+            logger.error(f"Error exporting to database: {str(e)}")
             return jsonify({
-                'error': f'Failed to export graph to Neo4j: {str(e)}'
+                'error': f'Failed to export graph to database: {str(e)}'
             }), 500
 
     logger.info("Routes registered successfully")

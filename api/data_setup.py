@@ -11,23 +11,28 @@ logger = logging.getLogger(__name__)
 def setup_neo4j_directories():
     """Create and set up Neo4j data directories with proper permissions."""
     try:
-        # Create base directory in /tmp for better permissions handling
+        # Create base directory in /tmp for Neo4j data
         base_path = Path(tempfile.gettempdir()) / 'neo4j_data'
+        if base_path.exists():
+            shutil.rmtree(base_path)
         base_path.mkdir(exist_ok=True)
+        os.chmod(base_path, 0o777)
 
-        # Define required directories
+        # Define and create required directories with proper permissions
         directories = {
             'data': base_path / 'data',
             'plugins': base_path / 'plugins',
             'logs': base_path / 'logs',
             'import': base_path / 'import',
-            'conf': base_path / 'conf'
+            'conf': base_path / 'conf',
+            'metrics': base_path / 'metrics',
+            'lib': base_path / 'lib',
+            'run': base_path / 'run',
+            'certificates': base_path / 'certificates'
         }
 
-        # Create directories with proper permissions
+        # Create all directories with proper permissions
         for dir_name, dir_path in directories.items():
-            if dir_path.exists():
-                shutil.rmtree(dir_path)
             dir_path.mkdir(parents=True)
             os.chmod(dir_path, 0o777)
             logger.info(f"Created directory with write permissions: {dir_path}")
@@ -40,10 +45,30 @@ def setup_neo4j_directories():
             os.chmod(conf_dest, 0o666)
             logger.info(f"Copied neo4j.conf to: {conf_dest}")
 
+        # Create empty log files with proper permissions
+        log_files = ['neo4j.log', 'debug.log', 'http.log', 'query.log', 'security.log']
+        for log_file in log_files:
+            log_path = directories['logs'] / log_file
+            log_path.touch()
+            os.chmod(log_path, 0o666)
+            logger.info(f"Created log file with write permissions: {log_path}")
+
+        # Verify directory ownership and permissions
+        subprocess.run(['ls', '-la', str(base_path)], check=True)
+
         return str(base_path)
     except Exception as e:
         logger.error(f"Failed to set up Neo4j directories: {str(e)}")
         return None
 
+def main():
+    """Main function to set up Neo4j environment."""
+    logger.info("Setting up Neo4j environment...")
+    base_path = setup_neo4j_directories()
+    if base_path:
+        logger.info(f"Successfully set up Neo4j environment at: {base_path}")
+        return 0
+    return 1
+
 if __name__ == "__main__":
-    setup_neo4j_directories()
+    exit(main())

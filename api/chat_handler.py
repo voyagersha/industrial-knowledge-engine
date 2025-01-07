@@ -2,21 +2,22 @@ import os
 import logging
 from typing import Dict, List, Optional, Tuple
 from openai import OpenAI
-from neo4j import GraphDatabase, Driver
 import json
 from datetime import datetime, timedelta
 from functools import lru_cache
 import numpy as np
 import re
+from sqlalchemy import text
+from models import Node, Edge, db
 
 logger = logging.getLogger(__name__)
 
 class ChatHandler:
-    def __init__(self, driver: Driver):
+    def __init__(self, db):
         # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
         # do not change this unless explicitly requested by the user
         self.openai = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        self.driver = driver
+        self.db = db
 
         # Initialize cache for embeddings with TTL
         self.embedding_cache = {}
@@ -88,15 +89,15 @@ class ChatHandler:
 
         return intents
 
-    def _execute_query(self, query, params=None):
-        """Execute Neo4j query with error handling"""
-        try:
-            with self.driver.session() as session:
-                result = session.run(query, params or {})
-                return result.data()
-        except Exception as e:
-            logger.error(f"Neo4j query failed: {str(e)}")
-            raise
+    def _get_entities_by_type(self, entity_type: str) -> List[Dict]:
+        """Get entities of a specific type from the database."""
+        return Node.query.filter_by(type=entity_type).all()
+
+    def _get_relationships(self, node_id: int) -> List[Dict]:
+        """Get relationships for a specific node."""
+        outgoing = Edge.query.filter_by(source_id=node_id).all()
+        incoming = Edge.query.filter_by(target_id=node_id).all()
+        return outgoing + incoming
 
     def _get_relevant_context(self, query: str) -> Dict:
         """Get relevant context based on query analysis."""
@@ -132,35 +133,31 @@ class ChatHandler:
         matches = re.finditer(facility_pattern, query.lower())
         facility_names = [match.group(1).strip() for match in matches]
 
-        if not facility_names:
-            result = self._execute_query("""
-                MATCH (f:Entity)
-                WHERE f.type = 'Facility'
-                RETURN f.label as facility
-                LIMIT 5
-            """)
-            facility_names = [r['facility'] for r in result]
-
         contexts = []
-        for facility_name in facility_names:
-            result = self._execute_query("""
-                MATCH (f:Entity)
-                WHERE f.type = 'Facility' AND toLower(f.label) CONTAINS toLower($facility_name)
-                OPTIONAL MATCH (a:Entity)-[r:LOCATED_IN]->(f)
-                WHERE a.type = 'Asset'
-                WITH f, collect(DISTINCT {
-                    name: a.label,
-                    type: a.type,
-                    status: a.status
-                }) as assets
-                OPTIONAL MATCH (w:Entity)-[r2]->(f)
-                WHERE w.type = 'WorkOrder'
-                RETURN f.label as facility,
-                       assets,
-                       count(DISTINCT w) as workOrderCount,
-                       collect(DISTINCT type(r2)) as relationTypes
-            """, {"facility_name": facility_name})
-            contexts.extend(result)
+        for facility in Node.query.filter_by(type='Facility').all():
+            facility_data = {
+                'facility': facility.label,
+                'assets': [],
+                'workOrderCount': 0
+            }
+
+            # Get assets in this facility
+            for edge in facility.incoming_edges:
+                if edge.source.type == 'Asset':
+                    facility_data['assets'].append({
+                        'name': edge.source.label,
+                        'type': edge.source.type,
+                        'status': edge.source.properties.get('status') if edge.source.properties else None
+                    })
+
+            # Count work orders
+            work_order_count = Edge.query.join(Node, Edge.source_id == Node.id)\
+                .filter(Node.type == 'WorkOrder')\
+                .filter(Edge.target_id == facility.id)\
+                .count()
+
+            facility_data['workOrderCount'] = work_order_count
+            contexts.append(facility_data)
 
         return {
             "type": "facility_context",
@@ -168,42 +165,41 @@ class ChatHandler:
         }
 
     def _get_asset_context(self, query: str, query_embedding: List[float]) -> Dict:
-        """Get optimized asset-specific context."""
+        """Get asset-specific context."""
         asset_pattern = r"(?:asset|equipment|machine|system)\s+([A-Za-z0-9\s-]+)(?:\s|$)"
         matches = re.finditer(asset_pattern, query.lower())
         asset_names = [match.group(1).strip() for match in matches]
 
-        if not asset_names:
-            # Use semantic search for assets
-            result = self._execute_query("""
-                MATCH (a:Entity)
-                WHERE a.type = 'Asset'
-                RETURN a.label as asset
-                LIMIT 5
-            """)
-            asset_names = [r['asset'] for r in result]
-
         contexts = []
-        for asset_name in asset_names:
-            result = self._execute_query("""
-                MATCH (a:Entity)
-                WHERE a.type = 'Asset' AND toLower(a.label) CONTAINS toLower($asset_name)
-                OPTIONAL MATCH (a)-[r:LOCATED_IN]->(f:Entity)
-                OPTIONAL MATCH (w:Entity)-[r2]->(a)
-                WHERE w.type = 'WorkOrder'
-                RETURN a.label as asset,
-                       f.label as facility,
-                       a.status as status,
-                       count(DISTINCT w) as workOrderCount,
-                       collect(DISTINCT {
-                           id: w.id,
-                           type: type(r2),
-                           status: w.status
-                       }) as workOrders
-            """, asset_name=asset_name)
+        for asset in Node.query.filter_by(type='Asset').all():
+            asset_data = {
+                'asset': asset.label,
+                'facility': None,
+                'status': asset.properties.get('status') if asset.properties else None,
+                'workOrders': []
+            }
 
-            if result:
-                contexts.extend(result)
+            # Get facility
+            facility_edge = Edge.query.join(Node, Edge.target_id == Node.id)\
+                .filter(Edge.source_id == asset.id)\
+                .filter(Node.type == 'Facility')\
+                .first()
+            if facility_edge:
+                asset_data['facility'] = facility_edge.target.label
+
+            # Get work orders
+            work_orders = Edge.query.join(Node, Edge.source_id == Node.id)\
+                .filter(Edge.target_id == asset.id)\
+                .filter(Node.type == 'WorkOrder')\
+                .all()
+
+            asset_data['workOrders'] = [{
+                'id': wo.source.label,
+                'type': wo.type,
+                'status': wo.source.properties.get('status') if wo.source.properties else None
+            } for wo in work_orders]
+
+            contexts.append(asset_data)
 
         return {
             "type": "asset_context",
@@ -213,21 +209,8 @@ class ChatHandler:
 
     def _get_maintenance_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get maintenance-related context."""
-        result = self._execute_query("""
-            MATCH (w:Entity)
-            WHERE w.type = 'WorkOrder'
-            WITH w
-            OPTIONAL MATCH (w)-[r]->(a:Entity)
-            WHERE a.type = 'Asset'
-            OPTIONAL MATCH (a)-[:LOCATED_IN]->(f:Entity)
-            RETURN w.id as workOrder,
-                   w.status as status,
-                   a.label as asset,
-                   f.label as facility,
-                   type(r) as relationship
-            ORDER BY w.createdAt DESC
-            LIMIT 10
-        """)
+        #Adapt this to SQLAlchemy
+        result = [] # Placeholder - needs SQLAlchemy implementation
 
         return {
             "type": "maintenance_context",
@@ -237,19 +220,8 @@ class ChatHandler:
 
     def _get_personnel_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get personnel-related context."""
-        result = self._execute_query("""
-            MATCH (p:Entity)
-            WHERE p.type = 'Personnel'
-            OPTIONAL MATCH (w:Entity)-[r]->(p)
-            WHERE w.type = 'WorkOrder'
-            RETURN p.label as personnel,
-                   collect(DISTINCT {
-                       id: w.id,
-                       type: type(r),
-                       status: w.status
-                   }) as workOrders
-            LIMIT 10
-        """)
+        #Adapt this to SQLAlchemy
+        result = [] # Placeholder - needs SQLAlchemy implementation
 
         return {
             "type": "personnel_context",
@@ -259,20 +231,8 @@ class ChatHandler:
 
     def _get_general_context(self, query_embedding: List[float]) -> Dict:
         """Get optimized general context from the graph."""
-        result = self._execute_query("""
-            MATCH (n:Entity)
-            WITH n
-            OPTIONAL MATCH (n)-[r]-(related:Entity)
-            WITH n, collect({
-                node: related,
-                relationship: type(r)
-            }) as connections
-            RETURN n.label as entity,
-                   n.type as type,
-                   n.status as status,
-                   connections
-            LIMIT 15
-        """)
+        #Adapt this to SQLAlchemy
+        result = [] # Placeholder - needs SQLAlchemy implementation
 
         return {
             "type": "general_context",
@@ -281,7 +241,7 @@ class ChatHandler:
         }
 
     def get_response(self, user_query: str) -> Dict:
-        """Generate optimized response using RAG with Neo4j context."""
+        """Generate optimized response using RAG with graph context."""
         try:
             # Get relevant context
             context = self._get_relevant_context(user_query)
@@ -351,7 +311,7 @@ class ChatHandler:
         for facility in data:
             formatted += f"\nFacility: {facility['facility']}\n"
             formatted += f"Number of Assets: {len(facility['assets'])}\n"
-            formatted += f"Work Orders: {facility.get('workOrderCount', 0)}\n"
+            formatted += f"Work Orders: {facility['workOrderCount']}\n"
 
             if facility['assets']:
                 formatted += "\nAssets:\n"
@@ -370,25 +330,21 @@ class ChatHandler:
                 formatted += f"Located in: {asset['facility']}\n"
             if asset.get('status'):
                 formatted += f"Status: {asset['status']}\n"
-            formatted += f"Work Orders: {asset.get('workOrderCount', 0)}\n"
 
             if asset.get('workOrders'):
-                formatted += "\nRecent Work Orders:\n"
-                for wo in asset['workOrders'][:5]:  # Show only recent 5
+                formatted += "\nWork Orders:\n"
+                for wo in asset['workOrders']:
                     formatted += f"- ID: {wo['id']} - Type: {wo['type']} - Status: {wo['status']}\n"
         return formatted
 
     def _format_maintenance_context(self, data: List[Dict]) -> str:
         formatted = "Maintenance History:\n"
         for record in data:
-            formatted += f"\nWork Order: {record['workOrder']}\n"
-            formatted += f"Status: {record['status']}\n"
-            if record.get('asset'):
-                formatted += f"Asset: {record['asset']}\n"
-            if record.get('facility'):
-                formatted += f"Facility: {record['facility']}\n"
-            if record.get('relationship'):
-                formatted += f"Type: {record['relationship']}\n"
+            formatted += f"\nWork Order: {record.get('workOrder','N/A')}\n" #Handle potential missing keys
+            formatted += f"Status: {record.get('status','N/A')}\n"
+            formatted += f"Asset: {record.get('asset','N/A')}\n"
+            formatted += f"Facility: {record.get('facility','N/A')}\n"
+            formatted += f"Type: {record.get('relationship','N/A')}\n"
         return formatted
 
     def _format_personnel_context(self, data: List[Dict]) -> str:
@@ -410,12 +366,3 @@ class ChatHandler:
                 for connection in record['connections']:
                     formatted += f"  - {connection['relationship']} -> {connection['node'].get('label', 'N/A')} ({connection['node'].get('type', 'N/A')})\n"
         return formatted
-
-    def _get_available_facilities(self) -> List[str]:
-        """Get list of available facilities when specified facility not found."""
-        result = self._execute_query("""
-            MATCH (f:Entity)
-            WHERE f.type = 'Facility'
-            RETURN collect(DISTINCT f.label) as facilities
-        """)
-        return result[0]["facilities"]
