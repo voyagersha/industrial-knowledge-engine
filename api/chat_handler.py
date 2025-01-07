@@ -19,78 +19,59 @@ class ChatHandler:
         """Query Neo4j based on user's question and return relevant context."""
         try:
             with self.neo4j_driver.session() as session:
-                # Create a more comprehensive query that looks for relevant information
-                result = session.run("""
-                    // Find work orders and their immediate relationships
-                    MATCH (wo:Entity {type: 'WorkOrder'})-[r1]-(related1)
-
-                    // Get secondary relationships to gather more context
-                    OPTIONAL MATCH (related1)-[r2]-(related2)
-                    WHERE related2 <> wo
-
-                    // Get tertiary relationships for deeper context
-                    OPTIONAL MATCH (related2)-[r3]-(related3)
-                    WHERE related3 <> related1 AND related3 <> wo
-
-                    RETURN 
-                        wo.label as work_order,
-                        wo.type as work_order_type,
-                        type(r1) as primary_relation,
-                        related1.label as related_entity1,
-                        related1.type as entity1_type,
-                        type(r2) as secondary_relation,
-                        related2.label as related_entity2,
-                        related2.type as entity2_type,
-                        type(r3) as tertiary_relation,
-                        related3.label as related_entity3,
-                        related3.type as entity3_type
-                    ORDER BY work_order
-                    LIMIT 15
-                """)
+                # Determine query type and execute appropriate Cypher query
+                if any(keyword in query.lower() for keyword in ['asset', 'equipment', 'machine']):
+                    if any(keyword in query.lower() for keyword in ['plant', 'facility', 'location']):
+                        # Query for assets by location
+                        result = session.run("""
+                            MATCH (asset:Entity {type: 'Asset'})-[r1:LOCATED_IN]->(facility:Entity {type: 'Facility'})
+                            OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
+                            OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
+                            RETURN 
+                                facility.label as facility_name,
+                                collect(DISTINCT {
+                                    asset_name: asset.label,
+                                    department: dept.label,
+                                    work_orders: collect(DISTINCT wo.label)
+                                }) as assets
+                            ORDER BY facility_name
+                        """)
+                    else:
+                        # Query for all assets and their relationships
+                        result = session.run("""
+                            MATCH (asset:Entity {type: 'Asset'})
+                            OPTIONAL MATCH (asset)-[r1:LOCATED_IN]->(facility:Entity {type: 'Facility'})
+                            OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
+                            OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
+                            RETURN 
+                                asset.label as asset_name,
+                                facility.label as facility_name,
+                                dept.label as department,
+                                collect(DISTINCT wo.label) as work_orders
+                            ORDER BY asset_name
+                        """)
+                else:
+                    # Default to work order focused query
+                    result = session.run("""
+                        MATCH (wo:Entity {type: 'WorkOrder'})-[r1:MAINTAINS]->(asset:Entity {type: 'Asset'})
+                        OPTIONAL MATCH (asset)-[:LOCATED_IN]->(facility:Entity {type: 'Facility'})
+                        OPTIONAL MATCH (asset)-[:BELONGS_TO]->(dept:Entity {type: 'Department'})
+                        OPTIONAL MATCH (wo)-[:ASSIGNED_TO]->(personnel:Entity {type: 'Personnel'})
+                        RETURN 
+                            wo.label as work_order,
+                            asset.label as asset_name,
+                            facility.label as facility_name,
+                            dept.label as department,
+                            personnel.label as assigned_to
+                        ORDER BY work_order
+                        LIMIT 15
+                    """)
 
                 records = result.data()
                 if not records:
-                    return "No relevant work order data found in the knowledge graph."
+                    return "No relevant data found in the knowledge graph matching your query."
 
-                context = "Work Order Information:\n"
-                current_wo = None
-
-                for record in records:
-                    wo_id = record['work_order']
-
-                    # Start a new work order section if it's different
-                    if wo_id != current_wo:
-                        current_wo = wo_id
-                        wo_display = wo_id.replace('WO_', 'Work Order ')
-                        context += f"\n{wo_display}:\n"
-
-                    # Add primary relationship
-                    if record['primary_relation']:
-                        label = self._format_relationship(
-                            record['primary_relation'],
-                            record['related_entity1'],
-                            record['entity1_type']
-                        )
-                        context += f"  • {label}\n"
-
-                    # Add secondary relationship if exists
-                    if record['secondary_relation']:
-                        label = self._format_relationship(
-                            record['secondary_relation'],
-                            record['related_entity2'],
-                            record['entity2_type']
-                        )
-                        context += f"    ↳ {label}\n"
-
-                    # Add tertiary relationship if exists
-                    if record['tertiary_relation']:
-                        label = self._format_relationship(
-                            record['tertiary_relation'],
-                            record['related_entity3'],
-                            record['entity3_type']
-                        )
-                        context += f"      ↳ {label}\n"
-
+                context = self._format_query_results(query, records)
                 logger.debug(f"Generated context: {context}")
                 return context
 
@@ -98,20 +79,50 @@ class ChatHandler:
             logger.error(f"Error querying Neo4j: {str(e)}")
             return "Unable to retrieve context from the knowledge graph."
 
-    def _format_relationship(self, relation_type: str, entity: str, entity_type: str) -> str:
-        """Format relationship information in a readable way."""
-        relation_map = {
-            'MAINTAINS': 'Maintains',
-            'LOCATED_IN': 'Located in',
-            'BELONGS_TO': 'Belongs to',
-            'ASSIGNED_TO': 'Assigned to',
-            'RELATED_TO': 'Related to',
-            'PART_OF': 'Part of',
-            'REPORTS_TO': 'Reports to'
-        }
+    def _format_query_results(self, query: str, records: List[Dict]) -> str:
+        """Format query results based on the type of query."""
+        if any(keyword in query.lower() for keyword in ['asset', 'equipment', 'machine']):
+            if 'facility_name' in records[0] and 'assets' in records[0]:
+                # Format facility-grouped assets
+                context = "Assets by Facility:\n"
+                for record in records:
+                    facility = record['facility_name'] or 'Unassigned Facility'
+                    context += f"\n{facility}:\n"
+                    for asset_info in record['assets']:
+                        context += f"  • {asset_info['asset_name']}\n"
+                        if asset_info['department']:
+                            context += f"    ↳ Department: {asset_info['department']}\n"
+                        if asset_info['work_orders']:
+                            wo_count = len(asset_info['work_orders'])
+                            context += f"    ↳ Associated Work Orders: {wo_count}\n"
+            else:
+                # Format individual asset records
+                context = "Asset Information:\n"
+                for record in records:
+                    context += f"\n• {record['asset_name']}\n"
+                    if record['facility_name']:
+                        context += f"  ↳ Location: {record['facility_name']}\n"
+                    if record['department']:
+                        context += f"  ↳ Department: {record['department']}\n"
+                    if record['work_orders']:
+                        wo_count = len(record['work_orders'])
+                        context += f"  ↳ Associated Work Orders: {wo_count}\n"
+        else:
+            # Format work order records
+            context = "Work Order Information:\n"
+            for record in records:
+                wo_id = record['work_order'].replace('WO_', 'Work Order ')
+                context += f"\n{wo_id}:\n"
+                if record['asset_name']:
+                    context += f"  • Asset: {record['asset_name']}\n"
+                if record['facility_name']:
+                    context += f"  • Location: {record['facility_name']}\n"
+                if record['department']:
+                    context += f"  • Department: {record['department']}\n"
+                if record['assigned_to']:
+                    context += f"  • Assigned to: {record['assigned_to']}\n"
 
-        relation = relation_map.get(relation_type, relation_type.replace('_', ' ').title())
-        return f"{relation}: {entity} ({entity_type})"
+        return context
 
     def get_response(self, user_query: str) -> Dict:
         """Get response from OpenAI based on Neo4j context."""
@@ -119,15 +130,15 @@ class ChatHandler:
             # Get relevant context from Neo4j
             graph_context = self._get_graph_context(user_query)
 
-            # Construct prompt with context
             system_message = """You are a knowledgeable assistant that helps users understand work order and maintenance data.
             Your responses should:
-            1. Be specific, citing work order IDs, asset names, and other entities when relevant
-            2. Explain relationships between different entities clearly
-            3. If you can't find specific information, explain what data would be needed
-            4. Keep responses concise but informative"""
+            1. Be specific about assets, locations, and departments
+            2. Include relevant statistics (e.g., number of assets per facility)
+            3. Highlight any patterns or relationships in the data
+            4. If information is missing, explain what specific data would help
+            5. Keep responses clear and structured"""
 
-            user_prompt = f"""Based on the following work order information from our knowledge graph:
+            user_prompt = f"""Based on the following information from our knowledge graph:
 
 {graph_context}
 
