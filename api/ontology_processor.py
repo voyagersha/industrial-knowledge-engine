@@ -2,34 +2,64 @@ import pandas as pd
 from typing import Dict, List
 import re
 
-def extract_entities(text: str) -> List[Dict]:
-    """Extract entities from text using basic pattern matching."""
-    # Simple word extraction (excluding common stop words)
-    words = re.findall(r'\b\w+\b', text.lower())
-    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for'}
-    entities = []
+def extract_entities(df: pd.DataFrame) -> List[tuple]:
+    """Extract entities from work order data with meaningful types."""
+    entities = set()
 
-    for word in words:
-        if word not in stop_words and len(word) > 2:
-            entities.append({
-                'text': word,
-                'label': 'CONCEPT',
-                'start': text.lower().find(word),
-                'end': text.lower().find(word) + len(word)
-            })
-    return entities
+    # Add assets as entities
+    for _, row in df.iterrows():
+        if pd.notna(row.get('Asset ID')) and pd.notna(row.get('Asset Name')):
+            entities.add((str(row['Asset Name']), 'Asset'))
 
-def extract_relationships(text: str) -> List[Dict]:
-    """Extract basic relationships between consecutive entities."""
-    words = text.split()
+        if pd.notna(row.get('Facility Name')):
+            entities.add((str(row['Facility Name']), 'Facility'))
+
+        if pd.notna(row.get('Department')):
+            entities.add((str(row['Department']), 'Department'))
+
+        if pd.notna(row.get('Workstation Name')):
+            entities.add((str(row['Workstation Name']), 'Workstation'))
+
+        if pd.notna(row.get('Assigned To')):
+            entities.add((str(row['Assigned To']), 'Personnel'))
+
+    return list(entities)
+
+def extract_relationships(df: pd.DataFrame) -> List[Dict]:
+    """Extract relationships between entities."""
     relationships = []
 
-    for i in range(len(words) - 1):
-        if len(words[i]) > 2 and len(words[i + 1]) > 2:  # Simple filter for meaningful words
+    for _, row in df.iterrows():
+        # Asset to Facility relationship
+        if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Facility Name')):
             relationships.append({
-                'source': words[i],
-                'target': words[i + 1],
-                'type': 'NEXT_TO'
+                'source': str(row['Asset Name']),
+                'target': str(row['Facility Name']),
+                'type': 'LOCATED_IN'
+            })
+
+        # Asset to Department relationship
+        if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Department')):
+            relationships.append({
+                'source': str(row['Asset Name']),
+                'target': str(row['Department']),
+                'type': 'BELONGS_TO'
+            })
+
+        # Workstation to Department relationship
+        if pd.notna(row.get('Workstation Name')) and pd.notna(row.get('Department')):
+            relationships.append({
+                'source': str(row['Workstation Name']),
+                'target': str(row['Department']),
+                'type': 'ASSIGNED_TO'
+            })
+
+        # Work Order to Asset relationship
+        if pd.notna(row.get('Asset Name')) and pd.notna(row.get('Work Order ID')):
+            relationships.append({
+                'source': f"WO_{row['Work Order ID']}",
+                'target': str(row['Asset Name']),
+                'type': 'MAINTAINS'
             })
 
     return relationships
@@ -37,31 +67,9 @@ def extract_relationships(text: str) -> List[Dict]:
 def extract_ontology(df: pd.DataFrame) -> Dict:
     """Extract ontology from work order data."""
     ontology = {
-        'entities': set(),
-        'relationships': [],
-        'attributes': set()
+        'entities': extract_entities(df),
+        'relationships': extract_relationships(df),
+        'attributes': list(df.columns)  # Include all columns as potential attributes
     }
 
-    # Process each work order
-    for _, row in df.iterrows():
-        # Assuming work orders have 'description' and 'title' columns
-        text = f"{row.get('title', '')} {row.get('description', '')}"
-
-        # Extract entities
-        entities = extract_entities(text)
-        for entity in entities:
-            ontology['entities'].add((entity['text'], entity['label']))
-
-        # Extract relationships
-        relationships = extract_relationships(text)
-        ontology['relationships'].extend(relationships)
-
-        # Extract attributes (column names from DataFrame)
-        ontology['attributes'].update(df.columns)
-
-    # Convert sets to lists for JSON serialization
-    return {
-        'entities': list(ontology['entities']),
-        'relationships': ontology['relationships'],
-        'attributes': list(ontology['attributes'])
-    }
+    return ontology
