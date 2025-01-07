@@ -17,8 +17,13 @@ def extract_entities(df: pd.DataFrame) -> List[Tuple[str, str]]:
 
     # Process each row
     for _, row in df.iterrows():
-        # Asset entities
-        if pd.notna(row.get('Asset ID')) and pd.notna(row.get('Asset Name')):
+        # Asset entities - now including both ID and Name
+        if pd.notna(row.get('Asset ID')):
+            asset_id = clean_text(row['Asset ID'])
+            if asset_id:
+                entities.add((f"Asset_{asset_id}", 'Asset'))
+
+        if pd.notna(row.get('Asset Name')):
             asset_name = clean_text(row['Asset Name'])
             if asset_name:
                 entities.add((asset_name, 'Asset'))
@@ -54,15 +59,36 @@ def extract_relationships(df: pd.DataFrame) -> List[Dict]:
     relationships = []
 
     for _, row in df.iterrows():
-        # Work Order to Asset relationship
-        if pd.notna(row.get('Work Order ID')) and pd.notna(row.get('Asset Name')):
+        # Work Order to Asset relationships
+        if pd.notna(row.get('Work Order ID')) and pd.notna(row.get('Asset ID')):
             wo_id = f"WO_{clean_text(row['Work Order ID'])}"
-            asset_name = clean_text(row['Asset Name'])
-            if wo_id and asset_name:
+            asset_id = f"Asset_{clean_text(row['Asset ID'])}"
+            if wo_id and asset_id:
                 relationships.append({
                     'source': wo_id,
-                    'target': asset_name,
+                    'target': asset_id,
                     'type': 'MAINTAINS'
+                })
+
+            # Also connect to Asset Name if available
+            if pd.notna(row.get('Asset Name')):
+                asset_name = clean_text(row['Asset Name'])
+                if wo_id and asset_name:
+                    relationships.append({
+                        'source': wo_id,
+                        'target': asset_name,
+                        'type': 'MAINTAINS'
+                    })
+
+        # Asset ID to Asset Name relationship
+        if pd.notna(row.get('Asset ID')) and pd.notna(row.get('Asset Name')):
+            asset_id = f"Asset_{clean_text(row['Asset ID'])}"
+            asset_name = clean_text(row['Asset Name'])
+            if asset_id and asset_name:
+                relationships.append({
+                    'source': asset_id,
+                    'target': asset_name,
+                    'type': 'HAS_NAME'
                 })
 
         # Asset to Facility relationship
