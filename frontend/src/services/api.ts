@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create an axios instance with default config
 const api = axios.create({
-    baseURL: import.meta.env.DEV ? 'http://localhost:5000' : '/api',
+    baseURL: '/api',  // This will be properly proxied by Vite
     headers: {
         'Content-Type': 'application/json',
     },
@@ -52,9 +52,9 @@ export const validateOntology = async (ontology: any) => {
 };
 
 export const exportToNeo4j = async (graph: any) => {
-  const response = await api.post('/export-neo4j', {
-    graph,
-  });
+    const response = await api.post('/export-neo4j', {
+        graph,
+    });
 
-  return response.data;
+    return response.data;
 };
