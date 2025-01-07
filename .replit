@@ -1,4 +1,4 @@
-modules = ["python-3.11", "nodejs-20", "java-17"]
+modules = ["python-3.11", "nodejs-20", "java-17", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
@@ -21,15 +21,11 @@ args = "Frontend Dev Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Neo4j Server"
+args = "Data Setup"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Data Setup"
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -47,7 +43,7 @@ args = "cd frontend && npm run dev"
 waitForPort = 5173
 
 [[workflows.workflow]]
-name = "Neo4j Server"
+name = "Data Setup"
 author = "agent"
 
 [workflows.workflow.metadata]
@@ -58,7 +54,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "neo4j console"
+args = "cd api && python data_setup.py"
 
 [[workflows.workflow]]
 name = "API Server"
@@ -73,20 +69,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd api && python app.py"
-
-[[workflows.workflow]]
-name = "Data Setup"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd api && python data_setup.py"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

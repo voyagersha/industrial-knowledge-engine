@@ -1,7 +1,6 @@
 import os
 import logging
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -33,9 +32,17 @@ def setup_neo4j_directories():
 
         # Create all directories with proper permissions
         for dir_name, dir_path in directories.items():
-            dir_path.mkdir(parents=True)
+            dir_path.mkdir(parents=True, exist_ok=True)
             os.chmod(dir_path, 0o777)
             logger.info(f"Created directory with write permissions: {dir_path}")
+
+        # Create necessary log files with proper permissions
+        log_files = ['neo4j.log', 'debug.log', 'http.log', 'query.log', 'security.log']
+        for log_file in log_files:
+            log_path = directories['logs'] / log_file
+            log_path.touch(exist_ok=True)
+            os.chmod(log_path, 0o666)
+            logger.info(f"Created log file with write permissions: {log_path}")
 
         # Copy neo4j.conf to the conf directory
         conf_source = Path(__file__).parent.parent / 'neo4j.conf'
@@ -44,17 +51,6 @@ def setup_neo4j_directories():
             shutil.copy2(conf_source, conf_dest)
             os.chmod(conf_dest, 0o666)
             logger.info(f"Copied neo4j.conf to: {conf_dest}")
-
-        # Create empty log files with proper permissions
-        log_files = ['neo4j.log', 'debug.log', 'http.log', 'query.log', 'security.log']
-        for log_file in log_files:
-            log_path = directories['logs'] / log_file
-            log_path.touch()
-            os.chmod(log_path, 0o666)
-            logger.info(f"Created log file with write permissions: {log_path}")
-
-        # Verify directory ownership and permissions
-        subprocess.run(['ls', '-la', str(base_path)], check=True)
 
         return str(base_path)
     except Exception as e:

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ThemeProvider, CssBaseline, Container, Box } from '@mui/material';
+import { ThemeProvider, CssBaseline, Container, Box, Typography } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 import FileUpload from './components/FileUpload';
 import OntologyValidator from './components/OntologyValidator';
@@ -33,6 +33,13 @@ const App: React.FC = () => {
       <CssBaseline />
       <Container maxWidth="lg">
         <Box sx={{ my: 4 }}>
+          <Typography variant="h4" component="h1" gutterBottom align="center" sx={{ mb: 4 }}>
+            Knowledge Graph Generator
+          </Typography>
+          <Typography variant="h6" gutterBottom align="center" sx={{ mb: 6, color: 'text.secondary' }}>
+            Transform your work order data into an intelligent, interconnected graph database
+          </Typography>
+
           {currentStep === 0 && (
             <FileUpload onProcessed={handleFileProcessed} />
           )}
