@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
-from py2neo import Graph, Node, Relationship
+from py2neo import Graph
 import logging
 import tempfile
 
@@ -31,8 +31,6 @@ def log_request_info():
     logger.debug('Headers: %s', dict(request.headers))
     logger.debug('Body: %s', request.get_data())
     logger.debug('URL: %s', request.url)
-    logger.debug('Endpoint: %s', request.endpoint)
-    logger.debug('View Args: %s', request.view_args)
     logger.debug('Method: %s', request.method)
 
 def get_graph():
@@ -47,7 +45,6 @@ def get_graph():
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
 
-# API routes
 @app.route('/test')
 def test():
     """Test endpoint to verify API functionality."""
@@ -106,66 +103,6 @@ def validate_ontology():
     except Exception as e:
         logger.error(f"Error validating ontology: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/export-neo4j', methods=['POST'])
-def export_to_neo4j():
-    try:
-        # Get Neo4j connection
-        graph_db = get_graph()
-        if not graph_db:
-            return jsonify({
-                'error': 'Neo4j connection failed. Please check the logs for details.'
-            }), 503
-
-        data = request.json
-        graph_data = data.get('graph', {})
-        logger.info("Received graph for Neo4j export")
-        logger.debug(f"Graph data to export: {graph_data}")
-
-        try:
-            # Clear existing graph
-            graph_db.run("MATCH (n) DETACH DELETE n")
-            logger.info("Cleared existing graph data")
-
-            # Create nodes and store them for relationship creation
-            tx = graph_db.begin()
-            nodes = {}
-
-            for node_data in graph_data['nodes']:
-                node = Node("Entity",
-                          id=node_data['id'],
-                          label=node_data['label'],
-                          type=node_data['type'])
-                tx.create(node)
-                nodes[node_data['id']] = node
-
-            logger.info(f"Created {len(nodes)} nodes")
-
-            # Create relationships
-            rel_count = 0
-            for edge in graph_data['edges']:
-                source = nodes.get(edge['source'])
-                target = nodes.get(edge['target'])
-                if source and target:
-                    rel = Relationship(source, edge['type'], target)
-                    tx.create(rel)
-                    rel_count += 1
-
-            tx.commit()
-            logger.info(f"Created {rel_count} relationships")
-            return jsonify({'message': 'Graph exported to Neo4j successfully'})
-
-        except Exception as e:
-            logger.error(f"Error during Neo4j export: {str(e)}")
-            if 'tx' in locals():
-                tx.rollback()
-            raise
-
-    except Exception as e:
-        logger.error(f"Error exporting to Neo4j: {str(e)}")
-        return jsonify({
-            'error': f'Failed to export graph to Neo4j: {str(e)}'
-        }), 500
 
 @app.route('/health')
 def health_check():

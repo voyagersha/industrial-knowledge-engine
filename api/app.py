@@ -1,55 +1,50 @@
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from config import logger, wait_for_neo4j, NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
-from neo4j import GraphDatabase
-import config
+from py2neo import Graph
+import logging
+from config import wait_for_neo4j, NEO4J_URI
+from data_setup import setup_neo4j_directories
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure CORS
+# Enable CORS
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-# Initialize Neo4j driver
-driver = None
-chat_handler = None
+# Initialize database
+def init_db():
+    """Initialize database connection and setup"""
+    try:
+        # Setup Neo4j directories first
+        if not setup_neo4j_directories():
+            logger.error("Failed to set up Neo4j directories")
+            return None
 
-def get_neo4j_driver():
-    """Get or create Neo4j driver"""
-    global driver
-    if not driver:
-        try:
-            # Wait for Neo4j to be available
-            if not wait_for_neo4j():
-                logger.error("Failed to connect to Neo4j after waiting")
-                return None
+        # Wait for Neo4j to be available
+        if not wait_for_neo4j():
+            logger.error("Neo4j failed to initialize")
+            return None
 
-            driver = GraphDatabase.driver(
-                NEO4J_URI,
-                auth=(NEO4J_USER, NEO4J_PASSWORD)
-            )
-            # Test connection
-            with driver.session() as session:
-                session.run("RETURN 1")
-            logger.info("Successfully connected to Neo4j")
-        except Exception as e:
-            logger.error(f"Failed to initialize Neo4j driver: {str(e)}")
-            driver = None
-    return driver
+        # Create graph connection
+        graph = Graph(NEO4J_URI)
+        logger.info("Successfully connected to Neo4j")
+        return graph
+    except Exception as e:
+        logger.error(f"Database initialization failed: {str(e)}")
+        return None
 
-def get_chat_handler():
-    """Get or create ChatHandler"""
-    global chat_handler
-    if not chat_handler:
-        from chat_handler import ChatHandler
-        try:
-            chat_handler = ChatHandler()
-            logger.info("Successfully initialized ChatHandler")
-        except Exception as e:
-            logger.error(f"Failed to initialize ChatHandler: {str(e)}")
-            chat_handler = None
-    return chat_handler
+# Initialize graph connection
+graph = init_db()
+if not graph:
+    logger.error("Failed to initialize database connection")
+    # Gracefully handle the case where Neo4j isn't available
+    # perhaps return a 503 error on all routes.
+    
 
 # Routes
 @app.route('/chat', methods=['POST'])
@@ -67,7 +62,7 @@ def chat():
         if not query:
             return jsonify({'error': 'No query provided'}), 400
 
-        response = handler.get_response(query)
+        response = handler.get_response(query) 
         return jsonify(response)
 
     except Exception as e:
@@ -82,26 +77,23 @@ def test():
     """Test endpoint to verify API functionality"""
     logger.info("Test endpoint hit")
     try:
-        # Test Neo4j connection
-        driver = get_neo4j_driver()
-        if not driver:
+        if not graph:
             return jsonify({
                 "status": "warning",
                 "message": "API is working but Neo4j connection failed"
             }), 200
 
-        with driver.session() as session:
-            result = session.run("RETURN 1 as num").single()
-            if result and result["num"] == 1:
-                return jsonify({
-                    "status": "success",
-                    "message": "API and Neo4j connection working"
-                }), 200
-            else:
-                return jsonify({
-                    "status": "warning",
-                    "message": "API working but Neo4j query failed"
-                }), 200
+        result = graph.run("RETURN 1 as num").data()
+        if result and result[0]["num"] == 1:
+            return jsonify({
+                "status": "success",
+                "message": "API and Neo4j connection working"
+            }), 200
+        else:
+            return jsonify({
+                "status": "warning",
+                "message": "API working but Neo4j query failed"
+            }), 200
 
     except Exception as e:
         logger.error(f"Error in test endpoint: {str(e)}")
@@ -118,8 +110,25 @@ def home():
 
 # Register all other routes
 from routes import register_routes
-register_routes(app, get_neo4j_driver())
+register_routes(app, graph)
+
+
+def get_chat_handler():
+    """Get or create ChatHandler"""
+    global chat_handler
+    if not chat_handler:
+        from chat_handler import ChatHandler
+        try:
+            chat_handler = ChatHandler(graph) 
+            logger.info("Successfully initialized ChatHandler")
+        except Exception as e:
+            logger.error(f"Failed to initialize ChatHandler: {str(e)}")
+            chat_handler = None
+    return chat_handler
+
+chat_handler = None # Initialize chat_handler globally
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
     logger.info("Starting Flask application...")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=True)

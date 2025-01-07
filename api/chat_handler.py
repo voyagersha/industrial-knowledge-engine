@@ -2,7 +2,7 @@ import os
 import logging
 from typing import Dict, List, Optional, Tuple
 from openai import OpenAI
-from neo4j import GraphDatabase
+from py2neo import Graph
 import json
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -12,23 +12,11 @@ import re
 logger = logging.getLogger(__name__)
 
 class ChatHandler:
-    def __init__(self):
+    def __init__(self, graph: Graph):
         # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
         # do not change this unless explicitly requested by the user
         self.openai = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        try:
-            # Initialize Neo4j connection
-            self.neo4j_driver = GraphDatabase.driver(
-                "bolt://localhost:7687",
-                auth=None  # Auth is disabled in our configuration
-            )
-            # Test connection
-            with self.neo4j_driver.session() as session:
-                session.run("RETURN 1")
-            logger.info("Successfully connected to Neo4j")
-        except Exception as e:
-            logger.error(f"Failed to connect to Neo4j: {str(e)}")
-            raise Exception("Neo4j connection failed")
+        self.graph = graph
 
         # Initialize cache for embeddings with TTL
         self.embedding_cache = {}
@@ -113,32 +101,30 @@ class ChatHandler:
             primary_intent = max(intents.items(), key=lambda x: x[1])[0]
             logger.info(f"Primary intent detected: {primary_intent}")
 
-            with self.neo4j_driver.session() as session:
-                if primary_intent == 'facility':
-                    return self._get_facility_context(session, query, query_embedding)
-                elif primary_intent == 'asset':
-                    return self._get_asset_context(session, query, query_embedding)
-                elif primary_intent == 'maintenance':
-                    return self._get_maintenance_context(session, query, query_embedding)
-                elif primary_intent == 'personnel':
-                    return self._get_personnel_context(session, query, query_embedding)
-                else:
-                    return self._get_general_context(session, query_embedding)
+            if primary_intent == 'facility':
+                return self._get_facility_context(query, query_embedding)
+            elif primary_intent == 'asset':
+                return self._get_asset_context(query, query_embedding)
+            elif primary_intent == 'maintenance':
+                return self._get_maintenance_context(query, query_embedding)
+            elif primary_intent == 'personnel':
+                return self._get_personnel_context(query, query_embedding)
+            else:
+                return self._get_general_context(query_embedding)
 
         except Exception as e:
             logger.error(f"Error getting context: {str(e)}")
             raise
 
-    def _get_facility_context(self, session, query: str, query_embedding: List[float]) -> Dict:
+    def _get_facility_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get optimized facility-specific context."""
-        # Extract potential facility names using regex
         facility_pattern = r"(?:facility|plant|site|building)\s+([A-Za-z0-9\s-]+)(?:\s|$)"
         matches = re.finditer(facility_pattern, query.lower())
         facility_names = [match.group(1).strip() for match in matches]
 
         # If no explicit facility mentioned, use semantic search
         if not facility_names:
-            result = session.run("""
+            result = self.graph.run("""
                 MATCH (f:Entity)
                 WHERE f.type = 'Facility'
                 RETURN f.label as facility
@@ -146,10 +132,9 @@ class ChatHandler:
             """).data()
             facility_names = [r['facility'] for r in result]
 
-        # Get context for each potential facility
         contexts = []
         for facility_name in facility_names:
-            result = session.run("""
+            result = self.graph.run("""
                 MATCH (f:Entity)
                 WHERE f.type = 'Facility' AND toLower(f.label) CONTAINS toLower($facility_name)
                 OPTIONAL MATCH (a:Entity)-[r:LOCATED_IN]->(f)
@@ -173,7 +158,7 @@ class ChatHandler:
         if not contexts:
             return {
                 "message": "No matching facilities found",
-                "suggestions": self._get_available_facilities(session)
+                "suggestions": self._get_available_facilities()
             }
 
         return {
@@ -182,7 +167,7 @@ class ChatHandler:
             "query_embedding": query_embedding
         }
 
-    def _get_asset_context(self, session, query: str, query_embedding: List[float]) -> Dict:
+    def _get_asset_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get optimized asset-specific context."""
         asset_pattern = r"(?:asset|equipment|machine|system)\s+([A-Za-z0-9\s-]+)(?:\s|$)"
         matches = re.finditer(asset_pattern, query.lower())
@@ -190,7 +175,7 @@ class ChatHandler:
 
         if not asset_names:
             # Use semantic search for assets
-            result = session.run("""
+            result = self.graph.run("""
                 MATCH (a:Entity)
                 WHERE a.type = 'Asset'
                 RETURN a.label as asset
@@ -200,7 +185,7 @@ class ChatHandler:
 
         contexts = []
         for asset_name in asset_names:
-            result = session.run("""
+            result = self.graph.run("""
                 MATCH (a:Entity)
                 WHERE a.type = 'Asset' AND toLower(a.label) CONTAINS toLower($asset_name)
                 OPTIONAL MATCH (a)-[r:LOCATED_IN]->(f:Entity)
@@ -226,9 +211,9 @@ class ChatHandler:
             "query_embedding": query_embedding
         }
 
-    def _get_maintenance_context(self, session, query: str, query_embedding: List[float]) -> Dict:
+    def _get_maintenance_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get maintenance-related context."""
-        result = session.run("""
+        result = self.graph.run("""
             MATCH (w:Entity)
             WHERE w.type = 'WorkOrder'
             WITH w
@@ -250,13 +235,31 @@ class ChatHandler:
             "query_embedding": query_embedding
         }
 
-    def _get_personnel_context(self, session, query: str, query_embedding: List[float]) -> Dict:
-        """Get personnel-related context (placeholder)."""
-        return {"type": "personnel_context", "data": [], "query_embedding": query_embedding}
+    def _get_personnel_context(self, query: str, query_embedding: List[float]) -> Dict:
+        """Get personnel-related context."""
+        result = self.graph.run("""
+            MATCH (p:Entity)
+            WHERE p.type = 'Personnel'
+            OPTIONAL MATCH (w:Entity)-[r]->(p)
+            WHERE w.type = 'WorkOrder'
+            RETURN p.label as personnel,
+                   collect(DISTINCT {
+                       id: w.id,
+                       type: type(r),
+                       status: w.status
+                   }) as workOrders
+            LIMIT 10
+        """).data()
 
-    def _get_general_context(self, session, query_embedding: List[float]) -> Dict:
+        return {
+            "type": "personnel_context",
+            "data": result,
+            "query_embedding": query_embedding
+        }
+
+    def _get_general_context(self, query_embedding: List[float]) -> Dict:
         """Get optimized general context from the graph."""
-        result = session.run("""
+        result = self.graph.run("""
             MATCH (n:Entity)
             WITH n
             OPTIONAL MATCH (n)-[r]-(related:Entity)
@@ -389,7 +392,14 @@ class ChatHandler:
         return formatted
 
     def _format_personnel_context(self, data: List[Dict]) -> str:
-        return "Personnel Information: (Not implemented yet)"
+        formatted = "Personnel Information:\n"
+        for record in data:
+            formatted += f"\nPerson: {record['personnel']}\n"
+            if record.get('workOrders'):
+                formatted += "Work Orders:\n"
+                for wo in record['workOrders']:
+                    formatted += f"- ID: {wo['id']} - Type: {wo['type']} - Status: {wo['status']}\n"
+        return formatted
 
     def _format_general_context(self, data: List[Dict]) -> str:
         formatted = "General Context:\n"
@@ -401,16 +411,11 @@ class ChatHandler:
                     formatted += f"  - {connection['relationship']} -> {connection['node'].get('label', 'N/A')} ({connection['node'].get('type', 'N/A')})\n"
         return formatted
 
-    def _get_available_facilities(self, session) -> List[str]:
+    def _get_available_facilities(self) -> List[str]:
         """Get list of available facilities when specified facility not found."""
-        result = session.run("""
+        result = self.graph.run("""
             MATCH (f:Entity)
             WHERE f.type = 'Facility'
             RETURN collect(DISTINCT f.label) as facilities
         """).data()[0]
         return result["facilities"]
-
-    def close(self):
-        """Clean up resources."""
-        if self.neo4j_driver:
-            self.neo4j_driver.close()
