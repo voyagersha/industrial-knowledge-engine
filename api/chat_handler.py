@@ -19,12 +19,59 @@ class ChatHandler:
         """Query Neo4j based on user's question and return relevant context."""
         try:
             with self.neo4j_driver.session() as session:
-                # Determine query type and execute appropriate Cypher query
-                if any(keyword in query.lower() for keyword in ['asset', 'equipment', 'machine']):
-                    if any(keyword in query.lower() for keyword in ['plant', 'facility', 'location']):
-                        # Query for assets by location
+                # Extract potential facility name from query
+                facility_terms = ['plant', 'facility', 'location', 'building', 'site']
+                query_lower = query.lower()
+
+                # Check if query is about assets in a specific location
+                if any(term in query_lower for term in facility_terms):
+                    # Extract potential facility name (text after location terms)
+                    facility_name = None
+                    for term in facility_terms:
+                        if term in query_lower:
+                            term_index = query_lower.index(term)
+                            remaining_text = query_lower[term_index:].split()
+                            if len(remaining_text) > 1:
+                                facility_name = remaining_text[1]  # Get the word after the facility term
+                                break
+
+                    if facility_name:
+                        # Query for assets by location with fuzzy matching
                         result = session.run("""
-                            MATCH (asset:Entity {type: 'Asset'})-[r1:LOCATED_IN]->(facility:Entity {type: 'Facility'})
+                            MATCH (facility:Entity {type: 'Facility'})
+                            WHERE toLower(facility.label) CONTAINS toLower($facility_name)
+                            WITH facility
+                            MATCH (asset:Entity {type: 'Asset'})-[r1:LOCATED_IN]->(facility)
+                            OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
+                            OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
+                            RETURN 
+                                facility.label as facility_name,
+                                collect(DISTINCT {
+                                    asset_name: asset.label,
+                                    department: dept.label,
+                                    work_orders: collect(DISTINCT wo.label)
+                                }) as assets
+                            ORDER BY facility_name
+                        """, facility_name=facility_name)
+
+                        records = result.data()
+                        if not records:
+                            # Try to find similar facility names
+                            similar_facilities = session.run("""
+                                MATCH (f:Entity {type: 'Facility'})
+                                RETURN f.label as facility_name
+                                ORDER BY f.label
+                            """).data()
+
+                            if similar_facilities:
+                                facilities_list = "\n".join([f"- {f['facility_name']}" for f in similar_facilities])
+                                return f"No assets found for facility '{facility_name}'. Available facilities are:\n{facilities_list}"
+                            return "No facility information found in the knowledge graph."
+                    else:
+                        # Query for all facilities and their assets
+                        result = session.run("""
+                            MATCH (facility:Entity {type: 'Facility'})
+                            OPTIONAL MATCH (asset:Entity {type: 'Asset'})-[r1:LOCATED_IN]->(facility)
                             OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
                             OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
                             RETURN 
@@ -36,44 +83,28 @@ class ChatHandler:
                                 }) as assets
                             ORDER BY facility_name
                         """)
-                    else:
-                        # Query for all assets and their relationships
-                        result = session.run("""
-                            MATCH (asset:Entity {type: 'Asset'})
-                            OPTIONAL MATCH (asset)-[r1:LOCATED_IN]->(facility:Entity {type: 'Facility'})
-                            OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
-                            OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
-                            RETURN 
-                                asset.label as asset_name,
-                                facility.label as facility_name,
-                                dept.label as department,
-                                collect(DISTINCT wo.label) as work_orders
-                            ORDER BY asset_name
-                        """)
+                        records = result.data()
+
                 else:
-                    # Default to work order focused query
+                    # Default query for assets
                     result = session.run("""
-                        MATCH (wo:Entity {type: 'WorkOrder'})-[r1:MAINTAINS]->(asset:Entity {type: 'Asset'})
-                        OPTIONAL MATCH (asset)-[:LOCATED_IN]->(facility:Entity {type: 'Facility'})
-                        OPTIONAL MATCH (asset)-[:BELONGS_TO]->(dept:Entity {type: 'Department'})
-                        OPTIONAL MATCH (wo)-[:ASSIGNED_TO]->(personnel:Entity {type: 'Personnel'})
+                        MATCH (asset:Entity {type: 'Asset'})
+                        OPTIONAL MATCH (asset)-[r1:LOCATED_IN]->(facility:Entity {type: 'Facility'})
+                        OPTIONAL MATCH (asset)-[r2:BELONGS_TO]->(dept:Entity {type: 'Department'})
+                        OPTIONAL MATCH (wo:Entity {type: 'WorkOrder'})-[r3:MAINTAINS]->(asset)
                         RETURN 
-                            wo.label as work_order,
                             asset.label as asset_name,
                             facility.label as facility_name,
                             dept.label as department,
-                            personnel.label as assigned_to
-                        ORDER BY work_order
-                        LIMIT 15
+                            collect(DISTINCT wo.label) as work_orders
+                        ORDER BY asset_name
                     """)
+                    records = result.data()
 
-                records = result.data()
                 if not records:
                     return "No relevant data found in the knowledge graph matching your query."
 
-                context = self._format_query_results(query, records)
-                logger.debug(f"Generated context: {context}")
-                return context
+                return self._format_query_results(query, records)
 
         except Exception as e:
             logger.error(f"Error querying Neo4j: {str(e)}")
@@ -81,46 +112,37 @@ class ChatHandler:
 
     def _format_query_results(self, query: str, records: List[Dict]) -> str:
         """Format query results based on the type of query."""
-        if any(keyword in query.lower() for keyword in ['asset', 'equipment', 'machine']):
-            if 'facility_name' in records[0] and 'assets' in records[0]:
-                # Format facility-grouped assets
-                context = "Assets by Facility:\n"
-                for record in records:
-                    facility = record['facility_name'] or 'Unassigned Facility'
+        if 'facility_name' in records[0] and 'assets' in records[0]:
+            # Format facility-grouped assets
+            context = "Assets by Facility:\n"
+            for record in records:
+                facility = record['facility_name'] or 'Unassigned Facility'
+                assets_info = record['assets']
+                if assets_info:  # Only show facilities with assets
                     context += f"\n{facility}:\n"
-                    for asset_info in record['assets']:
-                        context += f"  • {asset_info['asset_name']}\n"
-                        if asset_info['department']:
-                            context += f"    ↳ Department: {asset_info['department']}\n"
-                        if asset_info['work_orders']:
-                            wo_count = len(asset_info['work_orders'])
-                            context += f"    ↳ Associated Work Orders: {wo_count}\n"
-            else:
-                # Format individual asset records
-                context = "Asset Information:\n"
-                for record in records:
+                    for asset_info in assets_info:
+                        if asset_info['asset_name']:  # Only show valid assets
+                            context += f"  • {asset_info['asset_name']}\n"
+                            if asset_info['department']:
+                                context += f"    ↳ Department: {asset_info['department']}\n"
+                            if asset_info['work_orders']:
+                                wo_count = len([wo for wo in asset_info['work_orders'] if wo])
+                                if wo_count > 0:
+                                    context += f"    ↳ Associated Work Orders: {wo_count}\n"
+        else:
+            # Format individual asset records
+            context = "Asset Information:\n"
+            for record in records:
+                if record['asset_name']:  # Only show valid assets
                     context += f"\n• {record['asset_name']}\n"
                     if record['facility_name']:
                         context += f"  ↳ Location: {record['facility_name']}\n"
                     if record['department']:
                         context += f"  ↳ Department: {record['department']}\n"
                     if record['work_orders']:
-                        wo_count = len(record['work_orders'])
-                        context += f"  ↳ Associated Work Orders: {wo_count}\n"
-        else:
-            # Format work order records
-            context = "Work Order Information:\n"
-            for record in records:
-                wo_id = record['work_order'].replace('WO_', 'Work Order ')
-                context += f"\n{wo_id}:\n"
-                if record['asset_name']:
-                    context += f"  • Asset: {record['asset_name']}\n"
-                if record['facility_name']:
-                    context += f"  • Location: {record['facility_name']}\n"
-                if record['department']:
-                    context += f"  • Department: {record['department']}\n"
-                if record['assigned_to']:
-                    context += f"  • Assigned to: {record['assigned_to']}\n"
+                        wo_count = len([wo for wo in record['work_orders'] if wo])
+                        if wo_count > 0:
+                            context += f"  ↳ Associated Work Orders: {wo_count}\n"
 
         return context
 
