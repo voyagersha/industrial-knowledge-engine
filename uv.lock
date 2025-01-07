@@ -789,7 +789,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.4.2" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "spacy", specifier = ">=3.8.3" },
+    { name = "spacy", specifier = ">=3.0.0" },
 ]
 
 [[package]]

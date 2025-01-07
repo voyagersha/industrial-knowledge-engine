@@ -36,6 +36,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python api/main.py"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -51,6 +52,10 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "cd frontend && npm run dev"
 waitForPort = 5173
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
 
 [[ports]]
 localPort = 5173
