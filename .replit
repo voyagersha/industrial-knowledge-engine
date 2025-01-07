@@ -68,7 +68,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "neo4j console"
+args = "NEO4J_HOME=./ NEO4J_CONF=./ neo4j console"
 
 [[ports]]
 localPort = 5000
@@ -77,3 +77,11 @@ externalPort = 5000
 [[ports]]
 localPort = 5173
 externalPort = 80
+
+[[ports]]
+localPort = 7474
+externalPort = 3001
+
+[[ports]]
+localPort = 7687
+externalPort = 3000

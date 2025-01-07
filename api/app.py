@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from config import logger
+from config import logger, wait_for_neo4j
 from neo4j import GraphDatabase
 import config
 
@@ -13,18 +13,19 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Initialize Neo4j driver
 driver = None
-try:
-    driver = GraphDatabase.driver(
-        config.NEO4J_URI,
-        auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
-    )
-    # Test connection
-    with driver.session() as session:
-        result = session.run("RETURN 1")
-        result.single()
-    logger.info("Successfully connected to Neo4j")
-except Exception as e:
-    logger.error(f"Failed to connect to Neo4j: {str(e)}")
+
+# Wait for Neo4j to be available before starting the app
+if wait_for_neo4j():
+    try:
+        driver = GraphDatabase.driver(
+            config.NEO4J_URI,
+            auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
+        )
+        logger.info("Successfully initialized Neo4j driver")
+    except Exception as e:
+        logger.error(f"Failed to initialize Neo4j driver: {str(e)}")
+else:
+    logger.warning("Starting app without Neo4j connection. Export functionality will be limited.")
 
 # Routes
 @app.route('/test')
