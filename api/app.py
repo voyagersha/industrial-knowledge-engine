@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 from py2neo import Graph, Node, Relationship
@@ -14,9 +14,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__, static_folder='../frontend/dist')
-# Configure CORS to allow requests from the frontend
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+app = Flask(__name__)
+
+# Configure CORS
+CORS(app)
 
 # Create a temporary directory for Neo4j data
 TEMP_DIR = tempfile.mkdtemp()
@@ -33,14 +34,6 @@ def get_graph():
     except Exception as e:
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
-
-# Serve frontend static files
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_frontend(path):
-    if path == '':
-        return send_from_directory(app.static_folder, 'index.html')
-    return send_from_directory(app.static_folder, path)
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -63,7 +56,7 @@ def upload_file():
         from ontology_processor import extract_ontology
         ontology = extract_ontology(df)
         logger.info("Successfully extracted ontology")
-        logger.debug(f"Extracted ontology: {ontology}")  # Debug log to see the content
+        logger.debug(f"Extracted ontology: {ontology}")
 
         return jsonify({
             'message': 'File processed successfully',
@@ -108,7 +101,7 @@ def export_to_neo4j():
         data = request.json
         graph_data = data.get('graph', {})
         logger.info("Received graph for Neo4j export")
-        logger.debug(f"Graph data to export: {graph_data}")  # Debug log
+        logger.debug(f"Graph data to export: {graph_data}")
 
         try:
             # Clear existing graph
@@ -157,12 +150,18 @@ def export_to_neo4j():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    graph_db = get_graph()
-    neo4j_status = "connected" if graph_db else "disconnected"
     return jsonify({
         'status': 'healthy',
-        'neo4j_status': neo4j_status
+        'message': 'API is running'
     }), 200
+
+# Error handler for 404 Not Found
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'error': 'Not Found',
+        'message': 'The requested resource was not found on this server'
+    }), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
