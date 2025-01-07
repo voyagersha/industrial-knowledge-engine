@@ -30,6 +30,7 @@ const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expandedContext, setExpandedContext] = useState<number | null>(null);
 
   const handleSend = async () => {
@@ -38,6 +39,7 @@ const ChatInterface: React.FC = () => {
     const userMessage = input;
     setInput('');
     setLoading(true);
+    setError(null);
 
     // Add user message
     setMessages(prev => [
@@ -50,7 +52,18 @@ const ChatInterface: React.FC = () => {
     ]);
 
     try {
+      console.log('Sending chat request:', userMessage);
       const response = await chat(userMessage);
+      console.log('Received chat response:', response);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (!response.response) {
+        throw new Error('Empty response received from the server');
+      }
+
       setMessages(prev => [
         ...prev,
         {
@@ -61,10 +74,14 @@ const ChatInterface: React.FC = () => {
         },
       ]);
     } catch (error) {
+      console.error('Chat error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your request';
+
+      setError(errorMessage);
       setMessages(prev => [
         ...prev,
         {
-          text: 'Sorry, I encountered an error processing your request. Please try again.',
+          text: `Error: ${errorMessage}. Please try again.`,
           isUser: false,
           timestamp: new Date()
         },

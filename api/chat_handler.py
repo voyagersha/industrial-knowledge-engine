@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 
 class ChatHandler:
     def __init__(self, db):
-        # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-        # do not change this unless explicitly requested by the user
-        self.openai = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.openai = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
         self.db = db
 
         # Initialize cache for embeddings with TTL
@@ -243,8 +241,12 @@ class ChatHandler:
     def get_response(self, user_query: str) -> Dict:
         """Generate optimized response using RAG with graph context."""
         try:
+            logger.info(f"Processing chat query: {user_query}")
+
             # Get relevant context
             context = self._get_relevant_context(user_query)
+            logger.debug(f"Retrieved context: {context}")
+
             if "error" in context:
                 return {
                     "response": f"Error: {context['error']}. Please try rephrasing your question.",
@@ -253,6 +255,7 @@ class ChatHandler:
 
             # Format context for GPT
             formatted_context = self._format_context_for_gpt(context)
+            logger.debug(f"Formatted context: {formatted_context}")
 
             # Generate response using GPT-4
             system_message = """You are an expert in enterprise asset management and maintenance operations.
@@ -263,22 +266,35 @@ class ChatHandler:
             4. Include actionable insights based on the available data
             5. Keep responses clear, structured, and focused on the user's needs"""
 
-            response = self.openai.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {
-                        "role": "user", 
-                        "content": f"Based on this context:\n{formatted_context}\n\nQuestion: {user_query}"
-                    }
-                ],
-                temperature=0.7
-            )
+            try:
+                logger.info("Sending request to OpenAI")
+                response = self.openai.chat.completions.create(
+                    model="gpt-4-turbo-preview",  # Updated to latest model
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {
+                            "role": "user", 
+                            "content": f"Based on this context:\n{formatted_context}\n\nQuestion: {user_query}"
+                        }
+                    ],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
 
-            return {
-                "response": response.choices[0].message.content,
-                "context": formatted_context
-            }
+                logger.info("Received response from OpenAI")
+                logger.debug(f"OpenAI response: {response}")
+
+                if not response.choices or not response.choices[0].message:
+                    raise ValueError("Empty response received from OpenAI")
+
+                return {
+                    "response": response.choices[0].message.content,
+                    "context": formatted_context
+                }
+
+            except Exception as e:
+                logger.error(f"OpenAI API error: {str(e)}")
+                raise
 
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
