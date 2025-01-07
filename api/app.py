@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import logging
 from database import db, init_db
+from sqlalchemy import text
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS
 
 # Configure logging
@@ -21,7 +22,11 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = SQLALCHEMY_ENGINE_OPTIONS
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Initialize database
-init_db(app)
+db.init_app(app)
+with app.app_context():
+    # Make sure to import the models here so they can be created
+    from models import Node, Edge
+    db.create_all()
 
 @app.route('/chat', methods=['POST'])
 def chat():

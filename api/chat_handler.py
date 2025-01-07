@@ -164,46 +164,52 @@ class ChatHandler:
 
     def _get_asset_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get asset-specific context."""
-        asset_pattern = r"(?:asset|equipment|machine|system)\s+([A-Za-z0-9\s-]+)(?:\s|$)"
-        matches = re.finditer(asset_pattern, query.lower())
-        asset_names = [match.group(1).strip() for match in matches]
+        try:
+            # Query all assets from the database
+            assets = Node.query.filter_by(type='Asset').all()
 
-        contexts = []
-        for asset in Node.query.filter_by(type='Asset').all():
-            asset_data = {
-                'asset': asset.label,
-                'facility': None,
-                'status': asset.properties.get('status') if asset.properties else None,
-                'workOrders': []
+            asset_contexts = []
+            for asset in assets:
+                asset_data = {
+                    'asset': asset.label,
+                    'facility': None,
+                    'status': asset.properties.get('status') if asset.properties else None,
+                    'workOrders': []
+                }
+
+                # Get facility for this asset
+                facility_edge = Edge.query.join(Node, Edge.target_id == Node.id)\
+                    .filter(Edge.source_id == asset.id)\
+                    .filter(Node.type == 'Facility')\
+                    .first()
+                if facility_edge:
+                    asset_data['facility'] = facility_edge.target.label
+
+                # Get work orders for this asset
+                work_orders = Edge.query.join(Node, Edge.source_id == Node.id)\
+                    .filter(Edge.target_id == asset.id)\
+                    .filter(Node.type == 'WorkOrder')\
+                    .all()
+
+                for wo in work_orders:
+                    asset_data['workOrders'].append({
+                        'id': wo.source.label,
+                        'type': wo.type,
+                        'status': wo.source.properties.get('status') if wo.source.properties else None
+                    })
+
+                asset_contexts.append(asset_data)
+
+            logger.info(f"Retrieved {len(asset_contexts)} assets from the database")
+            return {
+                "type": "asset_context",
+                "data": asset_contexts,
+                "query_embedding": query_embedding
             }
 
-            # Get facility
-            facility_edge = Edge.query.join(Node, Edge.target_id == Node.id)\
-                .filter(Edge.source_id == asset.id)\
-                .filter(Node.type == 'Facility')\
-                .first()
-            if facility_edge:
-                asset_data['facility'] = facility_edge.target.label
-
-            # Get work orders
-            work_orders = Edge.query.join(Node, Edge.source_id == Node.id)\
-                .filter(Edge.target_id == asset.id)\
-                .filter(Node.type == 'WorkOrder')\
-                .all()
-
-            asset_data['workOrders'] = [{
-                'id': wo.source.label,
-                'type': wo.type,
-                'status': wo.source.properties.get('status') if wo.source.properties else None
-            } for wo in work_orders]
-
-            contexts.append(asset_data)
-
-        return {
-            "type": "asset_context",
-            "data": contexts,
-            "query_embedding": query_embedding
-        }
+        except Exception as e:
+            logger.error(f"Error getting asset context: {str(e)}")
+            raise
 
     def _get_maintenance_context(self, query: str, query_embedding: List[float]) -> Dict:
         """Get maintenance-related context."""
