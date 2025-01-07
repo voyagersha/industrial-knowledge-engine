@@ -24,8 +24,10 @@ def register_routes(app):
             df = pd.read_csv(file)
             logger.info(f"Successfully read CSV file with columns: {df.columns.tolist()}")
 
+            # Extract initial ontology
             ontology = extract_ontology(df)
-            logger.info("Successfully extracted ontology")
+            logger.info(f"Extracted ontology with {len(ontology.get('entities', []))} entities")
+            logger.debug(f"Extracted ontology: {ontology}")
 
             return jsonify({
                 'message': 'File processed successfully',
@@ -41,7 +43,13 @@ def register_routes(app):
         try:
             data = request.json
             validated_ontology = data.get('ontology', {})
+            logger.info(f"Received ontology with {len(validated_ontology.get('entities', []))} entities")
+            logger.debug(f"Validating ontology: {validated_ontology}")
+
+            # Generate graph structure
             graph_data = generate_knowledge_graph(validated_ontology)
+            logger.info(f"Generated graph with {len(graph_data.get('nodes', []))} nodes")
+            logger.debug(f"Generated graph: {graph_data}")
 
             return jsonify({
                 'message': 'Ontology validated successfully',
@@ -57,7 +65,7 @@ def register_routes(app):
         try:
             data = request.json
             graph_data = data.get('graph', {})
-            logger.info("Received graph for database export")
+            logger.info(f"Received graph with {len(graph_data.get('nodes', []))} nodes for database export")
 
             try:
                 # Clear existing data
@@ -79,8 +87,10 @@ def register_routes(app):
                     nodes[node_data['id']] = node
 
                 db.session.commit()
+                logger.info(f"Created {len(nodes)} nodes")
 
                 # Create relationships
+                edge_count = 0
                 for edge in graph_data['edges']:
                     logger.debug(f"Creating relationship: {edge['source']} -{edge['type']}-> {edge['target']}")
                     new_edge = Edge(
@@ -89,8 +99,11 @@ def register_routes(app):
                         type=edge['type']
                     )
                     db.session.add(new_edge)
+                    edge_count += 1
 
                 db.session.commit()
+                logger.info(f"Created {edge_count} relationships")
+
                 return jsonify({'message': 'Graph exported to database successfully'})
 
             except Exception as e:
