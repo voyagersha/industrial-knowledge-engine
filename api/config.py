@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import tempfile
 
 # Configure logging
 logging.basicConfig(
@@ -10,15 +11,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Neo4j configuration
-NEO4J_URI = 'bolt://localhost:7687'
-NEO4J_USER = 'neo4j'
-NEO4J_PASSWORD = None  # Auth is disabled in our configuration
+NEO4J_URI = "bolt://localhost:7687"
+NEO4J_USER = None  # Auth is disabled in our configuration
+NEO4J_PASSWORD = None
 
-# Ensure Neo4j directories exist
-os.makedirs('./data/neo4j/data', exist_ok=True)
-os.makedirs('./data/neo4j/plugins', exist_ok=True)
-os.makedirs('./data/neo4j/logs', exist_ok=True)
-os.makedirs('./data/neo4j/import', exist_ok=True)
+# Ensure Neo4j directories exist with correct permissions
+NEO4J_DIRS = [
+    'data/neo4j/data',
+    'data/neo4j/plugins',
+    'data/neo4j/logs',
+    'data/neo4j/import'
+]
+
+for dir_path in NEO4J_DIRS:
+    try:
+        os.makedirs(dir_path, exist_ok=True)
+        # Ensure directory is writable
+        os.chmod(dir_path, 0o777)
+    except Exception as e:
+        logger.error(f"Failed to create/configure directory {dir_path}: {str(e)}")
 
 def wait_for_neo4j(max_retries=30, retry_interval=1):
     """Wait for Neo4j to become available"""
