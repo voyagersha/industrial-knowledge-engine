@@ -29,6 +29,13 @@ CORS(app, resources={
 TEMP_DIR = tempfile.mkdtemp()
 NEO4J_URI = f"file://{TEMP_DIR}"
 
+@app.before_request
+def log_request_info():
+    """Log details about every incoming request."""
+    logger.debug('Headers: %s', dict(request.headers))
+    logger.debug('Body: %s', request.get_data())
+    logger.debug('URL: %s', request.url)
+
 def get_graph():
     """Get or create Neo4j graph connection using embedded mode."""
     try:
@@ -177,4 +184,5 @@ def not_found(error):
     }), 404
 
 if __name__ == '__main__':
+    logger.info("Starting Flask application...")
     app.run(host='0.0.0.0', port=5000, debug=True)
