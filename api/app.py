@@ -20,6 +20,11 @@ def get_neo4j_driver():
     global driver
     if not driver:
         try:
+            # Wait for Neo4j to be available
+            if not wait_for_neo4j():
+                logger.error("Failed to connect to Neo4j after waiting")
+                return None
+
             driver = GraphDatabase.driver(
                 NEO4J_URI,
                 auth=(NEO4J_USER, NEO4J_PASSWORD)
@@ -54,7 +59,7 @@ def chat():
         handler = get_chat_handler()
         if not handler:
             return jsonify({
-                'error': 'Chat functionality is not available. Please check Neo4j connection.'
+                'error': 'Chat functionality is not available. Please ensure Neo4j is running and try again.'
             }), 503
 
         data = request.json
@@ -67,13 +72,43 @@ def chat():
 
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'error': 'An error occurred while processing your request',
+            'details': str(e)
+        }), 500
 
 @app.route('/test')
 def test():
     """Test endpoint to verify API functionality"""
     logger.info("Test endpoint hit")
-    return jsonify({"message": "API is working"}), 200
+    try:
+        # Test Neo4j connection
+        driver = get_neo4j_driver()
+        if not driver:
+            return jsonify({
+                "status": "warning",
+                "message": "API is working but Neo4j connection failed"
+            }), 200
+
+        with driver.session() as session:
+            result = session.run("RETURN 1 as num").single()
+            if result and result["num"] == 1:
+                return jsonify({
+                    "status": "success",
+                    "message": "API and Neo4j connection working"
+                }), 200
+            else:
+                return jsonify({
+                    "status": "warning",
+                    "message": "API working but Neo4j query failed"
+                }), 200
+
+    except Exception as e:
+        logger.error(f"Error in test endpoint: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"API working but error occurred: {str(e)}"
+        }), 200
 
 @app.route('/')
 def home():
@@ -83,7 +118,7 @@ def home():
 
 # Register all other routes
 from routes import register_routes
-register_routes(app, get_neo4j_driver)
+register_routes(app, get_neo4j_driver())
 
 if __name__ == '__main__':
     logger.info("Starting Flask application...")

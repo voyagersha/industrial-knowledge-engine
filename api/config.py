@@ -10,9 +10,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Neo4j configuration
-NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://127.0.0.1:7687')  # Use localhost for client connections
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = ""  # Auth is disabled in our configuration
+NEO4J_URI = 'bolt://localhost:7687'
+NEO4J_USER = 'neo4j'
+NEO4J_PASSWORD = None  # Auth is disabled in our configuration
 
 # Ensure Neo4j directories exist
 os.makedirs('./data/neo4j/data', exist_ok=True)
@@ -20,7 +20,7 @@ os.makedirs('./data/neo4j/plugins', exist_ok=True)
 os.makedirs('./data/neo4j/logs', exist_ok=True)
 os.makedirs('./data/neo4j/import', exist_ok=True)
 
-def wait_for_neo4j(max_retries=60, retry_interval=2):
+def wait_for_neo4j(max_retries=30, retry_interval=1):
     """Wait for Neo4j to become available"""
     from neo4j import GraphDatabase
 
