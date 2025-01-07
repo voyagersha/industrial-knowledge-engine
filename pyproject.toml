@@ -16,4 +16,5 @@ dependencies = [
     "py2neo>=2021.2.4",
     "neo4j-driver>=5.27.0",
     "trafilatura>=2.0.0",
+    "openai>=1.59.3",
 ]

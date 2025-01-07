@@ -17,29 +17,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Frontend Dev Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Neo4j Server"
 
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
 [[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python api/app.py"
+task = "workflow.run"
+args = "API Server"
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -69,6 +55,21 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "NEO4J_HOME=./ NEO4J_CONF=./ neo4j console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd api && python app.py"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

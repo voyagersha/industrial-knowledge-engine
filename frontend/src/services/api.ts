@@ -58,3 +58,10 @@ export const exportToNeo4j = async (graph: any) => {
 
     return response.data;
 };
+
+export const chat = async (query: string) => {
+    const response = await api.post('/chat', {
+        query,
+    });
+    return response.data;
+};

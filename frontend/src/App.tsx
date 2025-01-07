@@ -5,6 +5,7 @@ import FileUpload from './components/FileUpload';
 import OntologyValidator from './components/OntologyValidator';
 import GraphViewer from './components/GraphViewer';
 import RuleEditor from './components/RuleEditor';
+import ChatInterface from './components/ChatInterface';
 
 const darkTheme = createTheme({
   palette: {
@@ -44,6 +45,7 @@ const App: React.FC = () => {
           {currentStep === 2 && (
             <>
               <GraphViewer graph={graph} />
+              <ChatInterface />
               <RuleEditor />
             </>
           )}
