@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configure CORS
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Create a temporary directory for Neo4j data
 TEMP_DIR = tempfile.mkdtemp()
@@ -34,6 +40,10 @@ def get_graph():
     except Exception as e:
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
+
+@app.route('/api/test', methods=['GET'])
+def test():
+    return jsonify({"message": "API is working"}), 200
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
