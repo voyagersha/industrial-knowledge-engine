@@ -10,7 +10,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Neo4j configuration
-NEO4J_URI = "bolt://127.0.0.1:7687"  # Use IP instead of localhost
+NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://127.0.0.1:7687')  # Use localhost for client connections
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = ""  # Auth is disabled in our configuration
 
@@ -20,9 +20,11 @@ os.makedirs('./data/neo4j/plugins', exist_ok=True)
 os.makedirs('./data/neo4j/logs', exist_ok=True)
 os.makedirs('./data/neo4j/import', exist_ok=True)
 
-def wait_for_neo4j(max_retries=30, retry_interval=1):
+def wait_for_neo4j(max_retries=60, retry_interval=2):
     """Wait for Neo4j to become available"""
     from neo4j import GraphDatabase
+
+    logger.info(f"Waiting for Neo4j to become available at {NEO4J_URI}")
 
     for attempt in range(max_retries):
         try:
@@ -38,6 +40,9 @@ def wait_for_neo4j(max_retries=30, retry_interval=1):
             logger.info("Successfully connected to Neo4j")
             return True
         except Exception as e:
+            if "address already in use" in str(e).lower():
+                logger.error(f"Neo4j port is already in use: {str(e)}")
+                return False
             logger.warning(f"Attempt {attempt + 1}/{max_retries} to connect to Neo4j failed: {str(e)}")
             if attempt < max_retries - 1:
                 time.sleep(retry_interval)
