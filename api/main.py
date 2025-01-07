@@ -16,15 +16,10 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure CORS - Allow direct access from frontend
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
-        "supports_credentials": True
-    }
-})
+# Configure CORS - Allow all origins during development
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},
+     supports_credentials=True)
 
 # Create a temporary directory for Neo4j data
 TEMP_DIR = tempfile.mkdtemp()
@@ -52,17 +47,14 @@ def get_graph():
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
 
-# Root route for basic API check
-@app.route('/')
-def root():
-    return jsonify({"message": "API root is working"}), 200
-
-@app.route('/api/test')
+# API routes
+@app.route('/test')
 def test():
-    logger.info("Handling /api/test request")
+    """Test endpoint to verify API functionality."""
+    logger.info("Handling /test request")
     return jsonify({"message": "API is working"}), 200
 
-@app.route('/api/upload', methods=['POST'])
+@app.route('/upload', methods=['POST'])
 def upload_file():
     try:
         if 'file' not in request.files:
@@ -93,7 +85,7 @@ def upload_file():
         logger.error(f"Error processing file: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/validate-ontology', methods=['POST'])
+@app.route('/validate-ontology', methods=['POST'])
 def validate_ontology():
     try:
         data = request.json
@@ -115,7 +107,7 @@ def validate_ontology():
         logger.error(f"Error validating ontology: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/export-neo4j', methods=['POST'])
+@app.route('/export-neo4j', methods=['POST'])
 def export_to_neo4j():
     try:
         # Get Neo4j connection
@@ -175,8 +167,9 @@ def export_to_neo4j():
             'error': f'Failed to export graph to Neo4j: {str(e)}'
         }), 500
 
-@app.route('/api/health')
+@app.route('/health')
 def health_check():
+    """Health check endpoint."""
     logger.info("Handling health check request")
     return jsonify({
         'status': 'healthy',
