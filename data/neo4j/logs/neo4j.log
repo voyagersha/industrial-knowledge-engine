@@ -91,3 +91,8 @@
 2025-01-07 08:21:26.626+0000 INFO  name: system
 2025-01-07 08:21:26.626+0000 INFO  creationDate: 2025-01-07T08:11:53.027Z
 2025-01-07 08:21:26.626+0000 INFO  Started.
+2025-01-07 08:25:25.891+0000 INFO  Logging config in use: Embedded default config 'default-user-logs.xml'
+2025-01-07 08:25:25.899+0000 INFO  Starting...
+2025-01-07 08:25:26.823+0000 INFO  This instance is ServerId{df865c1b} (df865c1b-5df0-4a47-8bc1-884c28d920a1)
+2025-01-07 08:25:28.066+0000 INFO  ======== Neo4j 5.19.0 ========
+2025-01-07 08:25:29.782+0000 INFO  Bolt enabled on 0.0.0.0:7687.

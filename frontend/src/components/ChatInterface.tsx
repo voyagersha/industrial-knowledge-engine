@@ -9,20 +9,28 @@ import {
   ListItem,
   ListItemText,
   CircularProgress,
+  Collapse,
+  IconButton,
 } from '@mui/material';
-import { Send as SendIcon } from '@mui/icons-material';
+import {
+  Send as SendIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+} from '@mui/icons-material';
 import { chat } from '../services/api';
 
 interface Message {
   text: string;
   isUser: boolean;
   context?: string;
+  timestamp: Date;
 }
 
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [expandedContext, setExpandedContext] = useState<number | null>(null);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -32,7 +40,14 @@ const ChatInterface: React.FC = () => {
     setLoading(true);
 
     // Add user message
-    setMessages(prev => [...prev, { text: userMessage, isUser: true }]);
+    setMessages(prev => [
+      ...prev,
+      {
+        text: userMessage,
+        isUser: true,
+        timestamp: new Date()
+      }
+    ]);
 
     try {
       const response = await chat(userMessage);
@@ -42,14 +57,16 @@ const ChatInterface: React.FC = () => {
           text: response.response,
           isUser: false,
           context: response.context,
+          timestamp: new Date()
         },
       ]);
     } catch (error) {
       setMessages(prev => [
         ...prev,
         {
-          text: 'Sorry, I encountered an error processing your request.',
+          text: 'Sorry, I encountered an error processing your request. Please try again.',
           isUser: false,
+          timestamp: new Date()
         },
       ]);
     } finally {
@@ -57,46 +74,100 @@ const ChatInterface: React.FC = () => {
     }
   };
 
+  const formatTimestamp = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const toggleContext = (index: number) => {
+    setExpandedContext(expandedContext === index ? null : index);
+  };
+
   return (
     <Paper sx={{ p: 2, mt: 2 }}>
       <Typography variant="h6" gutterBottom>
         Chat with Your Knowledge Graph
       </Typography>
-      
-      <Box sx={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
-        <List sx={{ flexGrow: 1, overflow: 'auto', mb: 2 }}>
+
+      <Box sx={{
+        height: '500px',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <List sx={{
+          flexGrow: 1,
+          overflow: 'auto',
+          mb: 2,
+          '& .MuiListItem-root': {
+            flexDirection: 'column',
+            alignItems: 'stretch',
+          }
+        }}>
           {messages.map((message, index) => (
             <ListItem
               key={index}
               sx={{
-                flexDirection: 'column',
-                alignItems: message.isUser ? 'flex-end' : 'flex-start',
+                mb: 1,
               }}
             >
-              <Paper
-                sx={{
-                  p: 1,
-                  bgcolor: message.isUser ? 'primary.main' : 'background.paper',
-                  maxWidth: '80%',
-                }}
-              >
-                <ListItemText
-                  primary={message.text}
-                  sx={{ 
-                    '& .MuiListItemText-primary': {
-                      color: message.isUser ? 'white' : 'text.primary',
-                    }
+              <Box sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: message.isUser ? 'flex-end' : 'flex-start',
+                width: '100%'
+              }}>
+                <Paper
+                  sx={{
+                    p: 2,
+                    maxWidth: '80%',
+                    bgcolor: message.isUser ? 'primary.main' : 'background.paper',
+                    color: message.isUser ? 'white' : 'text.primary',
+                    position: 'relative'
                   }}
-                />
-              </Paper>
-              {message.context && !message.isUser && (
-                <Typography
-                  variant="caption"
-                  sx={{ mt: 1, color: 'text.secondary' }}
                 >
-                  Context from graph: {message.context}
-                </Typography>
-              )}
+                  <Typography variant="body1">{message.text}</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 4,
+                      right: 8,
+                      opacity: 0.7
+                    }}
+                  >
+                    {formatTimestamp(message.timestamp)}
+                  </Typography>
+                </Paper>
+
+                {message.context && !message.isUser && (
+                  <Box sx={{ mt: 1, alignSelf: 'flex-start' }}>
+                    <Button
+                      size="small"
+                      onClick={() => toggleContext(index)}
+                      endIcon={expandedContext === index ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      {expandedContext === index ? 'Hide Context' : 'Show Context'}
+                    </Button>
+                    <Collapse in={expandedContext === index}>
+                      <Paper
+                        sx={{
+                          mt: 1,
+                          p: 2,
+                          bgcolor: 'action.hover',
+                          maxWidth: '100%',
+                          '& pre': {
+                            margin: 0,
+                            whiteSpace: 'pre-wrap',
+                            wordWrap: 'break-word'
+                          }
+                        }}
+                      >
+                        <pre>{message.context}</pre>
+                      </Paper>
+                    </Collapse>
+                  </Box>
+                )}
+              </Box>
             </ListItem>
           ))}
         </List>
@@ -104,9 +175,16 @@ const ChatInterface: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 1 }}>
           <TextField
             fullWidth
+            multiline
+            maxRows={4}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Ask about your work orders..."
             disabled={loading}
           />
@@ -114,9 +192,16 @@ const ChatInterface: React.FC = () => {
             variant="contained"
             onClick={handleSend}
             disabled={loading || !input.trim()}
-            startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+            sx={{ minWidth: '100px' }}
           >
-            Send
+            {loading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              <>
+                <SendIcon sx={{ mr: 1 }} />
+                Send
+              </>
+            )}
           </Button>
         </Box>
       </Box>
