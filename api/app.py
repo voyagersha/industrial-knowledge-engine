@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend/dist')
 # Configure CORS to allow requests from the frontend
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
@@ -34,14 +34,13 @@ def get_graph():
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
 
-# Serve static files
-@app.route('/')
-def serve_frontend():
-    return send_from_directory('../frontend/dist', 'index.html')
-
+# Serve frontend static files
+@app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('../frontend/dist', path)
+def serve_frontend(path):
+    if path == '':
+        return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(app.static_folder, path)
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -80,13 +79,13 @@ def validate_ontology():
         data = request.json
         validated_ontology = data.get('ontology', {})
         logger.info("Received ontology for validation")
-        logger.debug(f"Validating ontology: {validated_ontology}")  # Debug log
+        logger.debug(f"Validating ontology: {validated_ontology}")
 
         # Generate graph structure
         from graph_generator import generate_knowledge_graph
         graph = generate_knowledge_graph(validated_ontology)
         logger.info("Successfully generated knowledge graph")
-        logger.debug(f"Generated graph: {graph}")  # Debug log
+        logger.debug(f"Generated graph: {graph}")
 
         return jsonify({
             'message': 'Ontology validated successfully',
