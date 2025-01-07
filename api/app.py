@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pandas as pd
 from py2neo import Graph, Node, Relationship
@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)
+# Configure CORS to allow requests from the frontend
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Create a temporary directory for Neo4j data
 TEMP_DIR = tempfile.mkdtemp()
@@ -32,6 +33,15 @@ def get_graph():
     except Exception as e:
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
+
+# Serve static files
+@app.route('/')
+def serve_frontend():
+    return send_from_directory('../frontend/dist', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('../frontend/dist', path)
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -146,7 +156,7 @@ def export_to_neo4j():
             'error': f'Failed to export graph to Neo4j: {str(e)}'
         }), 500
 
-@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     graph_db = get_graph()
     neo4j_status = "connected" if graph_db else "disconnected"
