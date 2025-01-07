@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure CORS
+# Configure CORS - Allow direct access from frontend
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": True
     }
 })
 
@@ -35,6 +36,9 @@ def log_request_info():
     logger.debug('Headers: %s', dict(request.headers))
     logger.debug('Body: %s', request.get_data())
     logger.debug('URL: %s', request.url)
+    logger.debug('Endpoint: %s', request.endpoint)
+    logger.debug('View Args: %s', request.view_args)
+    logger.debug('Method: %s', request.method)
 
 def get_graph():
     """Get or create Neo4j graph connection using embedded mode."""
@@ -48,7 +52,12 @@ def get_graph():
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
 
-@app.route('/api/test', methods=['GET'])
+# Root route for basic API check
+@app.route('/')
+def root():
+    return jsonify({"message": "API root is working"}), 200
+
+@app.route('/api/test')
 def test():
     logger.info("Handling /api/test request")
     return jsonify({"message": "API is working"}), 200
@@ -166,7 +175,7 @@ def export_to_neo4j():
             'error': f'Failed to export graph to Neo4j: {str(e)}'
         }), 500
 
-@app.route('/api/health', methods=['GET'])
+@app.route('/api/health')
 def health_check():
     logger.info("Handling health check request")
     return jsonify({
