@@ -20,4 +20,8 @@ dependencies = [
     "numpy>=2.2.1",
     "sqlalchemy>=2.0.36",
     "flask-migrate>=4.0.7",
+    "flask-login>=0.6.3",
+    "flask-wtf>=1.2.2",
+    "oauthlib>=3.2.2",
+    "twilio>=9.4.1",
 ]
