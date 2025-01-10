@@ -47,24 +47,28 @@ def register_routes(app):
             logger.error(f"Error processing file: {str(e)}", exc_info=True)
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/validate-ontology', methods=['POST'])
+    @app.route('/api/validate-ontology', methods=['POST', 'OPTIONS'])
     def validate_ontology():
+        """Validate ontology and generate graph."""
         logger.info("Validate ontology endpoint hit")
+
+        # Handle OPTIONS request for CORS preflight
+        if request.method == 'OPTIONS':
+            return '', 204
+
         try:
             data = request.json
-            validated_ontology = data.get('ontology') if data else {}
+            if not data or 'ontology' not in data:
+                logger.error("Invalid request data")
+                return jsonify({'error': 'Invalid request data'}), 400
 
-            # Initialize empty ontology if none provided
-            if validated_ontology is None:
-                validated_ontology = {'entities': [], 'relationships': [], 'attributes': []}
-
+            validated_ontology = data.get('ontology')
             logger.info(f"Received ontology with {len(validated_ontology.get('entities', []))} entities")
             logger.debug(f"Validating ontology: {validated_ontology}")
 
             # Generate graph structure
             graph_data = generate_knowledge_graph(validated_ontology)
-            logger.info(f"Generated graph with {len(graph_data.get('nodes', []))} nodes and {len(graph_data.get('edges', []))} edges")
-            logger.debug(f"Generated graph: {graph_data}")
+            logger.info(f"Generated graph with {len(graph_data.get('nodes', []))} nodes")
 
             return jsonify({
                 'message': 'Ontology validated successfully',
@@ -74,14 +78,22 @@ def register_routes(app):
             logger.error(f"Error validating ontology: {str(e)}", exc_info=True)
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/export-neo4j', methods=['POST'])
+    @app.route('/api/export-neo4j', methods=['POST', 'OPTIONS'])
     def export_to_neo4j():
-        logger.info("Export to database endpoint hit")
+        """Export graph to Neo4j database."""
+        logger.info("Export to Neo4j endpoint hit")
+
+        # Handle OPTIONS request for CORS preflight
+        if request.method == 'OPTIONS':
+            return '', 204
+
         try:
             data = request.json
+            if not data or 'graph' not in data:
+                return jsonify({'error': 'No graph data provided'}), 400
+
             graph_data = data.get('graph', {})
-            logger.info(f"Received graph with {len(graph_data.get('nodes', []))} nodes for database export")
-            logger.debug(f"Full graph data: {graph_data}")
+            logger.info(f"Received graph with {len(graph_data.get('nodes', []))} nodes")
 
             try:
                 # Clear existing data
@@ -93,7 +105,6 @@ def register_routes(app):
                 # Create nodes
                 nodes = {}
                 for node_data in graph_data.get('nodes', []):
-                    logger.debug(f"Creating node: {node_data}")
                     node = Node(
                         label=node_data.get('label', ''),
                         type=node_data.get('type', 'Unknown'),
@@ -110,35 +121,29 @@ def register_routes(app):
                 for edge in graph_data.get('edges', []):
                     source_id = edge.get('source')
                     target_id = edge.get('target')
-                    if not source_id or not target_id or source_id not in nodes or target_id not in nodes:
-                        logger.warning(f"Skipping edge due to missing nodes: {edge}")
-                        continue
-
-                    logger.debug(f"Creating relationship: {source_id} -{edge.get('type', 'Unknown')}-> {target_id}")
-                    new_edge = Edge(
-                        source=nodes[source_id],
-                        target=nodes[target_id],
-                        type=edge.get('type', 'Unknown')
-                    )
-                    db.session.add(new_edge)
-                    edge_count += 1
+                    if source_id and target_id and source_id in nodes and target_id in nodes:
+                        new_edge = Edge(
+                            source=nodes[source_id],
+                            target=nodes[target_id],
+                            type=edge.get('type', 'Unknown')
+                        )
+                        db.session.add(new_edge)
+                        edge_count += 1
 
                 db.session.commit()
                 logger.info(f"Created {edge_count} relationships")
 
                 return jsonify({
-                    'message': f'Graph exported to database successfully. Created {len(nodes)} nodes and {edge_count} edges.'
+                    'message': f'Graph exported successfully. Created {len(nodes)} nodes and {edge_count} edges.'
                 })
 
             except Exception as e:
-                logger.error(f"Error during database export: {str(e)}", exc_info=True)
+                logger.error(f"Database error: {str(e)}", exc_info=True)
                 db.session.rollback()
                 raise
 
         except Exception as e:
-            logger.error(f"Error exporting to database: {str(e)}", exc_info=True)
-            return jsonify({
-                'error': f'Failed to export graph to database: {str(e)}'
-            }), 500
+            logger.error(f"Error exporting to Neo4j: {str(e)}", exc_info=True)
+            return jsonify({'error': str(e)}), 500
 
     logger.info("Routes registered successfully")
