@@ -7,6 +7,46 @@ from models import Node, Edge
 from database import db
 
 def register_routes(app):
+    @app.route('/api/upload', methods=['POST', 'OPTIONS'])
+    def upload_file():
+        """Handle file upload."""
+        logger.info("Upload endpoint hit")
+
+        # Handle OPTIONS request for CORS preflight
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        try:
+            if 'file' not in request.files:
+                logger.error("No file part in request")
+                return jsonify({'error': 'No file provided'}), 400
+
+            file = request.files['file']
+            if file.filename == '':
+                logger.error("No selected file")
+                return jsonify({'error': 'No file selected'}), 400
+
+            if not file.filename.endswith('.csv'):
+                logger.error("Invalid file type")
+                return jsonify({'error': 'Only CSV files are supported'}), 400
+
+            # Process the file
+            df = pd.read_csv(file)
+            logger.info(f"Successfully read CSV file with {len(df)} rows and columns: {df.columns.tolist()}")
+
+            # Extract initial ontology
+            ontology = extract_ontology(df)
+            logger.info(f"Extracted ontology: {len(ontology.get('entities', []))} entities, {len(ontology.get('relationships', []))} relationships")
+            logger.debug(f"Full ontology data: {ontology}")
+
+            return jsonify({
+                'message': 'File processed successfully',
+                'ontology': ontology
+            })
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}", exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/validate-ontology', methods=['POST'])
     def validate_ontology():
         logger.info("Validate ontology endpoint hit")

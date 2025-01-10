@@ -26,7 +26,16 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 # Initialize extensions
 db.init_app(app)
-CORS(app, resources={r"/*": {"origins": "*"}})  # Allow CORS for all routes
+
+# Configure CORS properly
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
 migrate = Migrate(app, db)
 
 # Initialize database tables
@@ -44,45 +53,6 @@ def log_request_info():
     logger.info(f"Request: {request.method} {request.url}")
     logger.debug(f"Request headers: {request.headers}")
     logger.debug(f"Request data: {request.get_data()}")
-
-# Direct upload route without /api prefix
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    """Handle file upload."""
-    logger.info("Upload endpoint hit")
-    try:
-        if 'file' not in request.files:
-            logger.error("No file part in request")
-            return jsonify({'error': 'No file provided'}), 400
-
-        file = request.files['file']
-        if file.filename == '':
-            logger.error("No selected file")
-            return jsonify({'error': 'No file selected'}), 400
-
-        if not file.filename.endswith('.csv'):
-            logger.error("Invalid file type")
-            return jsonify({'error': 'Only CSV files are supported'}), 400
-
-        # Process the file
-        import pandas as pd
-        from ontology_processor import extract_ontology
-
-        df = pd.read_csv(file)
-        logger.info(f"Successfully read CSV file with {len(df)} rows and columns: {df.columns.tolist()}")
-
-        # Extract initial ontology
-        ontology = extract_ontology(df)
-        logger.info(f"Extracted ontology: {len(ontology.get('entities', []))} entities, {len(ontology.get('relationships', []))} relationships")
-        logger.debug(f"Full ontology data: {ontology}")
-
-        return jsonify({
-            'message': 'File processed successfully',
-            'ontology': ontology
-        })
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health_check():
@@ -112,7 +82,7 @@ def chat():
         logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
-# Register other routes
+# Register routes
 from routes import register_routes
 register_routes(app)
 
