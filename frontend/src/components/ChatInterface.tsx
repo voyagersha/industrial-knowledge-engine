@@ -23,6 +23,7 @@ interface Message {
   context?: {
     type: string;
     data: any[];
+    system_note?: string;
   };
   timestamp: Date;
 }
@@ -98,10 +99,15 @@ const ChatInterface: React.FC = () => {
   };
 
   const formatContext = (context: Message['context']) => {
-    if (!context) return '';
+    if (!context || !context.data) return '';
 
     try {
-      return JSON.stringify(context.data, null, 2);
+      const formattedData = {
+        type: context.type,
+        data: context.data,
+        system_note: context.system_note
+      };
+      return JSON.stringify(formattedData, null, 2);
     } catch (error) {
       console.error('Error formatting context:', error);
       return 'Error formatting context data';
