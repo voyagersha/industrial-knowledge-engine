@@ -14,7 +14,14 @@ import { Delete, Check } from '@mui/icons-material';
 import { validateOntology } from '../services/api';
 
 interface OntologyValidatorProps {
-  ontology: any;
+  ontology: {
+    entities: [string, string][];
+    relationships: {
+      source: string;
+      target: string;
+      type: string;
+    }[];
+  };
   onValidated: (graph: any) => void;
 }
 
@@ -44,7 +51,7 @@ const OntologyValidator: React.FC<OntologyValidatorProps> = ({
       <Typography variant="h5" gutterBottom>
         Validate Extracted Ontology
       </Typography>
-      
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Entities</Typography>
         <List>

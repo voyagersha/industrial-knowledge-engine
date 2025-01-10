@@ -10,7 +10,11 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__, static_folder='../frontend/dist')
+app = Flask(__name__)
+static_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
+app.static_folder = static_folder
+logger.info(f"Static folder path: {static_folder}")
+logger.info(f"Static folder exists: {os.path.exists(static_folder)}")
 
 # Configure database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -71,28 +75,26 @@ def chat():
 from routes import register_routes
 register_routes(app)
 
-# Frontend routes
-@app.route('/')
-def serve_frontend():
+# Serve frontend routes
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
     """Serve the frontend application."""
     try:
         if not os.path.exists(app.static_folder):
-            logger.error("Static folder not found")
+            logger.error(f"Static folder not found at {app.static_folder}")
             return jsonify({'error': 'Frontend build not found'}), 404
+
+        # First try to serve the exact file
+        file_path = os.path.join(app.static_folder, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return send_from_directory(app.static_folder, path)
+
+        # Otherwise, serve index.html for client-side routing
+        logger.info(f"Serving index.html for path: {path}")
         return send_from_directory(app.static_folder, 'index.html')
     except Exception as e:
         logger.error(f"Error serving frontend: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/<path:path>')
-def serve_static(path):
-    """Serve static files from the frontend build."""
-    try:
-        if not os.path.exists(os.path.join(app.static_folder, path)):
-            return send_from_directory(app.static_folder, 'index.html')
-        return send_from_directory(app.static_folder, path)
-    except Exception as e:
-        logger.error(f"Error serving static file: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

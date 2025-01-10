@@ -25,11 +25,11 @@ args = "Data Setup"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
+args = "Frontend Build"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Frontend Build"
+args = "API Server"
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -61,6 +61,20 @@ task = "shell.exec"
 args = "cd api && python data_setup.py"
 
 [[workflows.workflow]]
+name = "Frontend Build"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && npm run build && echo 'Build completed successfully'"
+
+[[workflows.workflow]]
 name = "API Server"
 author = "agent"
 
@@ -74,20 +88,6 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "cd api && python app.py"
 waitForPort = 5000
-
-[[workflows.workflow]]
-name = "Frontend Build"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd frontend && npm run build && echo 'Build completed successfully'"
 
 [[ports]]
 localPort = 5000
