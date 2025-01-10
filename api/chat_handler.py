@@ -40,70 +40,81 @@ class ChatHandler:
     def _get_asset_context(self) -> Dict:
         """Get asset-specific context using optimized queries."""
         try:
-            # Use a single efficient query to get all asset data
+            # First get a count of work orders for debugging
+            count_query = text("""
+                SELECT COUNT(DISTINCT wo.id) 
+                FROM node wo 
+                WHERE wo.type = 'WorkOrder'
+            """)
+            result = db.session.execute(count_query)
+            total_wo_count = result.scalar()
+            logger.info(f"Total work orders in database: {total_wo_count}")
+
+            # Get assets with their work orders using a simpler query
             query = text("""
-                WITH RECURSIVE
-                unique_assets AS (
-                    -- Get distinct assets with their primary facility
+                WITH base_assets AS (
+                    -- Get unique assets with their facilities
                     SELECT DISTINCT ON (a.id)
                         a.id as asset_id,
                         a.label as asset_label,
                         a.properties as asset_properties,
                         f.label as facility_label
                     FROM node a
-                    LEFT JOIN edge e_f ON a.id = e_f.source_id
-                    LEFT JOIN node f ON e_f.target_id = f.id AND f.type = 'Facility'
+                    LEFT JOIN edge e_f ON a.id = e_f.target_id AND e_f.type = 'LOCATED_IN'
+                    LEFT JOIN node f ON e_f.source_id = f.id AND f.type = 'Facility'
                     WHERE a.type = 'Asset'
-                    ORDER BY a.id, f.id
-                ),
-                work_orders AS (
-                    -- Get unique work orders for each asset
-                    SELECT DISTINCT
-                        ua.asset_id,
-                        json_agg(DISTINCT 
-                            json_build_object(
-                                'id', wo.label,
-                                'status', wo.properties->>'status',
-                                'type', e_wo.type
-                            )
-                        ) FILTER (WHERE wo.id IS NOT NULL) as work_orders
-                    FROM unique_assets ua
-                    LEFT JOIN edge e_wo ON ua.asset_id = e_wo.target_id
-                    LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
-                    GROUP BY ua.asset_id
+                    ORDER BY a.id, f.label
                 )
-                -- Combine asset data with their work orders
                 SELECT 
-                    ua.*,
-                    wo.work_orders
-                FROM unique_assets ua
-                LEFT JOIN work_orders wo ON ua.asset_id = wo.asset_id
-                ORDER BY ua.asset_label;
+                    ba.*,
+                    wo.id as wo_id,
+                    wo.label as wo_label,
+                    e_wo.type as wo_type
+                FROM base_assets ba
+                LEFT JOIN edge e_wo ON ba.asset_id = e_wo.target_id AND e_wo.type = 'MAINTAINS'
+                LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
+                ORDER BY ba.asset_label, wo.label;
             """)
 
             result = db.session.execute(query)
-            asset_contexts = []
 
+            # Process results into the required format
+            assets_dict = {}
             for row in result:
-                asset_data = {
-                    'asset': row.asset_label,
-                    'facility': row.facility_label,
-                    'status': row.asset_properties.get('status') if row.asset_properties else None,
-                    'workOrders': row.work_orders if row.work_orders else []
-                }
-                asset_contexts.append(asset_data)
+                asset_id = row.asset_id
+                if asset_id not in assets_dict:
+                    assets_dict[asset_id] = {
+                        'asset': row.asset_label,
+                        'facility': row.facility_label,
+                        'status': row.asset_properties.get('status') if row.asset_properties else None,
+                        'workOrders': []
+                    }
 
-            logger.info(f"Returning context for {len(asset_contexts)} assets")
+                if row.wo_id:  # Only add work orders if they exist
+                    work_order = {
+                        'id': row.wo_label,
+                        'status': None,
+                        'type': row.wo_type
+                    }
+                    # Avoid duplicates
+                    if not any(wo['id'] == work_order['id'] for wo in assets_dict[asset_id]['workOrders']):
+                        assets_dict[asset_id]['workOrders'].append(work_order)
 
-            # Add system note to help LLM understand the data
+            asset_contexts = list(assets_dict.values())
+            total_work_orders = sum(len(asset['workOrders']) for asset in asset_contexts)
+            logger.info(f"Processed {len(asset_contexts)} assets with {total_work_orders} total work orders")
+
+            # Log detail for each asset
+            for asset in asset_contexts:
+                logger.debug(f"Asset {asset['asset']} has {len(asset['workOrders'])} work orders")
+
             return {
                 "type": "asset_context",
                 "data": asset_contexts,
-                "system_note": """
-                This data represents unique assets and their associated work orders.
-                Each asset appears exactly once with its primary facility.
-                Work orders are deduplicated to avoid double-counting.
-                The total work order count should be calculated by summing unique work orders across all assets.
+                "system_note": f"""
+                There are {total_work_orders} work orders distributed across {len(asset_contexts)} assets.
+                Each work order is uniquely associated with one asset through a 'MAINTAINS' relationship.
+                Assets can be located in different facilities but work orders are counted only once.
                 """
             }
 
