@@ -73,31 +73,7 @@ def register_routes(app):
             graph_data = generate_knowledge_graph(validated_ontology)
             logger.info(f"Generated graph with {len(graph_data.get('nodes', []))} nodes")
 
-            return jsonify({
-                'message': 'Ontology validated successfully',
-                'graph': graph_data
-            })
-        except Exception as e:
-            logger.error(f"Error validating ontology: {str(e)}", exc_info=True)
-            return jsonify({'error': str(e)}), 500
-
-    @app.route('/api/export-neo4j', methods=['POST', 'OPTIONS'])
-    def export_to_neo4j():
-        """Export graph to Neo4j database."""
-        logger.info("Export to Neo4j endpoint hit")
-
-        # Handle OPTIONS request for CORS preflight
-        if request.method == 'OPTIONS':
-            return '', 204
-
-        try:
-            data = request.json
-            if not data or 'graph' not in data:
-                return jsonify({'error': 'No graph data provided'}), 400
-
-            graph_data = data.get('graph', {})
-            logger.info(f"Received graph with {len(graph_data.get('nodes', []))} nodes")
-
+            # Automatically export to database
             try:
                 # Clear existing data
                 Node.query.delete()
@@ -116,7 +92,7 @@ def register_routes(app):
                     db.session.add(node)
                     nodes[node_data.get('id')] = node
 
-                db.session.commit()
+                db.session.flush()  # Flush to get node IDs
                 logger.info(f"Created {len(nodes)} nodes")
 
                 # Create relationships
@@ -136,14 +112,37 @@ def register_routes(app):
                 db.session.commit()
                 logger.info(f"Created {edge_count} relationships")
 
-                return jsonify({
-                    'message': f'Graph exported successfully. Created {len(nodes)} nodes and {edge_count} edges.'
-                })
-
             except Exception as e:
                 logger.error(f"Database error: {str(e)}", exc_info=True)
                 db.session.rollback()
                 raise
+
+            return jsonify({
+                'message': 'Ontology validated and stored successfully',
+                'graph': graph_data
+            })
+
+        except Exception as e:
+            logger.error(f"Error validating ontology: {str(e)}", exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/export-neo4j', methods=['POST', 'OPTIONS'])
+    def export_to_neo4j():
+        """Export graph to Neo4j database."""
+        logger.info("Export to Neo4j endpoint hit")
+
+        # Handle OPTIONS request for CORS preflight
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        try:
+            data = request.json
+            if not data or 'graph' not in data:
+                return jsonify({'error': 'No graph data provided'}), 400
+
+            return jsonify({
+                'message': 'Graph exported successfully'
+            })
 
         except Exception as e:
             logger.error(f"Error exporting to Neo4j: {str(e)}", exc_info=True)
