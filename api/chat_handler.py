@@ -42,39 +42,43 @@ class ChatHandler:
         try:
             # Use a single efficient query to get all asset data
             query = text("""
-                WITH asset_data AS (
-                    SELECT 
+                WITH RECURSIVE
+                unique_assets AS (
+                    -- Get distinct assets with their primary facility
+                    SELECT DISTINCT ON (a.id)
                         a.id as asset_id,
                         a.label as asset_label,
                         a.properties as asset_properties,
-                        f.label as facility_label,
-                        COUNT(DISTINCT wo.id) as work_order_count
+                        f.label as facility_label
                     FROM node a
                     LEFT JOIN edge e_f ON a.id = e_f.source_id
                     LEFT JOIN node f ON e_f.target_id = f.id AND f.type = 'Facility'
-                    LEFT JOIN edge e_wo ON a.id = e_wo.target_id
-                    LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
                     WHERE a.type = 'Asset'
-                    GROUP BY a.id, a.label, a.properties, f.label
+                    ORDER BY a.id, f.id
+                ),
+                work_orders AS (
+                    -- Get unique work orders for each asset
+                    SELECT DISTINCT
+                        ua.asset_id,
+                        json_agg(DISTINCT 
+                            json_build_object(
+                                'id', wo.label,
+                                'status', wo.properties->>'status',
+                                'type', e_wo.type
+                            )
+                        ) FILTER (WHERE wo.id IS NOT NULL) as work_orders
+                    FROM unique_assets ua
+                    LEFT JOIN edge e_wo ON ua.asset_id = e_wo.target_id
+                    LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
+                    GROUP BY ua.asset_id
                 )
+                -- Combine asset data with their work orders
                 SELECT 
-                    ad.*,
-                    json_agg(
-                        json_build_object(
-                            'id', wo.label,
-                            'status', wo.properties->>'status',
-                            'type', e_wo.type
-                        )
-                    ) FILTER (WHERE wo.id IS NOT NULL) as work_orders
-                FROM asset_data ad
-                LEFT JOIN edge e_wo ON ad.asset_id = e_wo.target_id
-                LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
-                GROUP BY 
-                    ad.asset_id, 
-                    ad.asset_label, 
-                    ad.asset_properties, 
-                    ad.facility_label, 
-                    ad.work_order_count
+                    ua.*,
+                    wo.work_orders
+                FROM unique_assets ua
+                LEFT JOIN work_orders wo ON ua.asset_id = wo.asset_id
+                ORDER BY ua.asset_label;
             """)
 
             result = db.session.execute(query)
@@ -90,9 +94,17 @@ class ChatHandler:
                 asset_contexts.append(asset_data)
 
             logger.info(f"Returning context for {len(asset_contexts)} assets")
+
+            # Add system note to help LLM understand the data
             return {
                 "type": "asset_context",
-                "data": asset_contexts
+                "data": asset_contexts,
+                "system_note": """
+                This data represents unique assets and their associated work orders.
+                Each asset appears exactly once with its primary facility.
+                Work orders are deduplicated to avoid double-counting.
+                The total work order count should be calculated by summing unique work orders across all assets.
+                """
             }
 
         except Exception as e:
@@ -250,7 +262,6 @@ class ChatHandler:
             except Exception as e:
                 logger.error(f"OpenAI API error: {str(e)}", exc_info=True)
                 raise
-
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
             return {
