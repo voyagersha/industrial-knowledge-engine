@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, Typography, Paper } from '@mui/material';
+import { Button, Typography, Paper } from '@mui/material';
 import { Upload as UploadIcon } from '@mui/icons-material';
 import { uploadFile } from '../services/api';
 
@@ -14,13 +14,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onProcessed }) => {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const file = e.dataTransfer.files[0];
     if (file.type !== 'text/csv') {
       setError('Please upload a CSV file');
       return;
     }
-    
+
     try {
       const result = await uploadFile(file);
       onProcessed(result);
@@ -32,7 +32,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onProcessed }) => {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     try {
       const result = await uploadFile(file);
       onProcessed(result);

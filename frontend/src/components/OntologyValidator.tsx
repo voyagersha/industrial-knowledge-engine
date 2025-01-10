@@ -10,7 +10,7 @@ import {
   IconButton,
   Button,
 } from '@mui/material';
-import { Delete, Edit, Check } from '@mui/icons-material';
+import { Delete, Check } from '@mui/icons-material';
 import { validateOntology } from '../services/api';
 
 interface OntologyValidatorProps {

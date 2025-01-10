@@ -2,10 +2,22 @@ import React, { useEffect, useRef } from 'react';
 import { Box, Paper, Button, Typography } from '@mui/material';
 import * as d3 from 'd3';
 import { exportToNeo4j } from '../services/api';
-import { Graph } from '../types';
+
+interface GraphNode extends d3.SimulationNodeDatum {
+  id: string;
+  label: string;
+  type: string;
+}
+
+interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
+  type: string;
+}
 
 interface GraphViewerProps {
-  graph: Graph;
+  graph: {
+    nodes: GraphNode[];
+    edges: GraphLink[];
+  };
 }
 
 const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
@@ -29,7 +41,6 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
 
     const width = 800;
     const height = 600;
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
 
     const svg = d3.select(svgRef.current)
       .attr("viewBox", `0 0 ${width} ${height}`)
@@ -50,9 +61,9 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       .attr("fill", "#999");
 
     // Create the simulation
-    const simulation = d3.forceSimulation(graph.nodes)
-      .force("link", d3.forceLink(graph.edges)
-        .id((d: any) => d.id)
+    const simulation = d3.forceSimulation<GraphNode>(graph.nodes)
+      .force("link", d3.forceLink<GraphNode, GraphLink>(graph.edges)
+        .id(d => d.id)
         .distance(150))
       .force("charge", d3.forceManyBody().strength(-500))
       .force("center", d3.forceCenter(width / 2, height / 2))
@@ -87,7 +98,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       .attr("font-size", "10px")
       .attr("fill", "#999")
       .attr("text-anchor", "middle")
-      .text((d: any) => d.type);
+      .text(d => d.type);
 
     // Create node groups
     const nodes = g.append("g")
@@ -95,7 +106,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       .data(graph.nodes)
       .enter()
       .append("g")
-      .call(d3.drag<any, any>()
+      .call(d3.drag<SVGGElement, GraphNode>()
         .on("start", dragstarted)
         .on("drag", dragged)
         .on("end", dragended));
@@ -103,7 +114,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
     // Add circles for nodes
     nodes.append("circle")
       .attr("r", 25)
-      .attr("fill", (d: any) => getNodeColor(d.type));
+      .attr("fill", d => getNodeColor(d.type));
 
     // Add node labels
     nodes.append("text")
@@ -112,7 +123,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       .attr("fill", "#fff")
       .style("font-size", "12px")
       .style("pointer-events", "none")
-      .text((d: any) => d.label);
+      .text(d => d.label);
 
     // Add node type labels
     nodes.append("text")
@@ -121,7 +132,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       .attr("fill", "#999")
       .style("font-size", "10px")
       .style("pointer-events", "none")
-      .text((d: any) => d.type);
+      .text(d => d.type);
 
     function getNodeColor(type: string): string {
       const colors: { [key: string]: string } = {
@@ -134,18 +145,18 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
       return colors[type] || '#607D8B';
     }
 
-    function dragstarted(event: any) {
+    function dragstarted(event: d3.D3DragEvent<SVGGElement, GraphNode, GraphNode>) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
       event.subject.fx = event.subject.x;
       event.subject.fy = event.subject.y;
     }
 
-    function dragged(event: any) {
+    function dragged(event: d3.D3DragEvent<SVGGElement, GraphNode, GraphNode>) {
       event.subject.fx = event.x;
       event.subject.fy = event.y;
     }
 
-    function dragended(event: any) {
+    function dragended(event: d3.D3DragEvent<SVGGElement, GraphNode, GraphNode>) {
       if (!event.active) simulation.alphaTarget(0);
       event.subject.fx = null;
       event.subject.fy = null;
@@ -154,16 +165,16 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
     // Update positions on simulation tick
     simulation.on("tick", () => {
       links.select("line")
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
+        .attr("x1", d => (d.source as GraphNode).x!)
+        .attr("y1", d => (d.source as GraphNode).y!)
+        .attr("x2", d => (d.target as GraphNode).x!)
+        .attr("y2", d => (d.target as GraphNode).y!);
 
       links.select("text")
-        .attr("x", (d: any) => (d.source.x + d.target.x) / 2)
-        .attr("y", (d: any) => (d.source.y + d.target.y) / 2);
+        .attr("x", d => ((d.source as GraphNode).x! + (d.target as GraphNode).x!) / 2)
+        .attr("y", d => ((d.source as GraphNode).y! + (d.target as GraphNode).y!) / 2);
 
-      nodes.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+      nodes.attr("transform", d => `translate(${d.x},${d.y})`);
     });
 
   }, [graph]);

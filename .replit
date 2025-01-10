@@ -87,7 +87,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd frontend && npm run build"
+args = "cd frontend && npm run build && echo 'Build completed successfully'"
 
 [[ports]]
 localPort = 5000
