@@ -28,7 +28,8 @@ interface Message {
   timestamp: Date;
 }
 
-interface ChatResponse {
+// This interface is used internally by the chat function
+interface ChatApiResponse {
   response: string;
   context?: {
     type: string;
@@ -63,7 +64,7 @@ const ChatInterface: React.FC = () => {
 
     try {
       console.log('Sending chat request:', userMessage);
-      const response = await chat(userMessage);
+      const response: ChatApiResponse = await chat(userMessage);
       console.log('Received chat response:', response);
 
       if (response.error) {
