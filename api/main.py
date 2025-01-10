@@ -45,6 +45,15 @@ def get_graph():
         logger.error(f"Failed to connect to Neo4j: {str(e)}")
         return None
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint."""
+    logger.info("Handling health check request")
+    return jsonify({
+        'status': 'healthy',
+        'message': 'API is running'
+    }), 200
+
 @app.route('/test')
 def test():
     """Test endpoint to verify API functionality."""
@@ -66,7 +75,7 @@ def upload_file():
 
         # Read CSV with pandas
         df = pd.read_csv(file)
-        logger.info(f"Successfully read CSV file with columns: {df.columns.tolist()}")
+        logger.info(f"Successfully read CSV file with {len(df)} rows and columns: {df.columns.tolist()}")
 
         # Extract initial ontology
         from ontology_processor import extract_ontology
@@ -90,6 +99,10 @@ def validate_ontology():
         logger.info("Received ontology for validation")
         logger.debug(f"Validating ontology: {validated_ontology}")
 
+        # Initialize empty ontology if none provided
+        if not validated_ontology:
+            validated_ontology = {'entities': [], 'relationships': [], 'attributes': []}
+
         # Generate graph structure
         from graph_generator import generate_knowledge_graph
         graph = generate_knowledge_graph(validated_ontology)
@@ -103,15 +116,6 @@ def validate_ontology():
     except Exception as e:
         logger.error(f"Error validating ontology: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/health')
-def health_check():
-    """Health check endpoint."""
-    logger.info("Handling health check request")
-    return jsonify({
-        'status': 'healthy',
-        'message': 'API is running'
-    }), 200
 
 # Error handler for 404 Not Found
 @app.errorhandler(404)

@@ -28,6 +28,15 @@ with app.app_context():
     from models import Node, Edge
     db.create_all()
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint."""
+    logger.info("Handling health check request")
+    return jsonify({
+        'status': 'healthy',
+        'message': 'API is running'
+    }), 200
+
 @app.route('/chat', methods=['POST'])
 def chat():
     """Handle chat requests"""
@@ -51,7 +60,7 @@ def chat():
 
 @app.route('/test')
 def test():
-    """Test endpoint to verify API functionality"""
+    """Test endpoint to verify API functionality."""
     logger.info("Test endpoint hit")
     try:
         # Test database connection
