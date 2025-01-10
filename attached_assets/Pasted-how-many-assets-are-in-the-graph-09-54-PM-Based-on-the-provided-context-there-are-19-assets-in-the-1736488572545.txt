@@ -1,0 +1,538 @@
+how many assets are in the graph
+
+09:54 PM
+Based on the provided context, there are 19 assets in the graph.
+
+09:54 PM
+[
+  {
+    "asset": "Asset001",
+    "facility": "Plant A",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0008",
+        "status": null
+      },
+      {
+        "id": "WO_WO0023",
+        "status": null
+      },
+      {
+        "id": "WO_WO0024",
+        "status": null
+      },
+      {
+        "id": "WO_WO0030",
+        "status": null
+      },
+      {
+        "id": "WO_WO0034",
+        "status": null
+      },
+      {
+        "id": "WO_WO0044",
+        "status": null
+      },
+      {
+        "id": "WO_WO0072",
+        "status": null
+      },
+      {
+        "id": "WO_WO0073",
+        "status": null
+      },
+      {
+        "id": "WO_WO0075",
+        "status": null
+      },
+      {
+        "id": "WO_WO0077",
+        "status": null
+      },
+      {
+        "id": "WO_WO0088",
+        "status": null
+      },
+      {
+        "id": "WO_WO0099",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset002",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0011",
+        "status": null
+      },
+      {
+        "id": "WO_WO0017",
+        "status": null
+      },
+      {
+        "id": "WO_WO0026",
+        "status": null
+      },
+      {
+        "id": "WO_WO0059",
+        "status": null
+      },
+      {
+        "id": "WO_WO0062",
+        "status": null
+      },
+      {
+        "id": "WO_WO0080",
+        "status": null
+      },
+      {
+        "id": "WO_WO0094",
+        "status": null
+      },
+      {
+        "id": "WO_WO0095",
+        "status": null
+      },
+      {
+        "id": "WO_WO0097",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset003",
+    "facility": "Plant A",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0009",
+        "status": null
+      },
+      {
+        "id": "WO_WO0012",
+        "status": null
+      },
+      {
+        "id": "WO_WO0015",
+        "status": null
+      },
+      {
+        "id": "WO_WO0032",
+        "status": null
+      },
+      {
+        "id": "WO_WO0065",
+        "status": null
+      },
+      {
+        "id": "WO_WO0070",
+        "status": null
+      },
+      {
+        "id": "WO_WO0087",
+        "status": null
+      },
+      {
+        "id": "WO_WO0090",
+        "status": null
+      },
+      {
+        "id": "WO_WO0100",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset004",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0002",
+        "status": null
+      },
+      {
+        "id": "WO_WO0016",
+        "status": null
+      },
+      {
+        "id": "WO_WO0033",
+        "status": null
+      },
+      {
+        "id": "WO_WO0036",
+        "status": null
+      },
+      {
+        "id": "WO_WO0039",
+        "status": null
+      },
+      {
+        "id": "WO_WO0045",
+        "status": null
+      },
+      {
+        "id": "WO_WO0068",
+        "status": null
+      },
+      {
+        "id": "WO_WO0074",
+        "status": null
+      },
+      {
+        "id": "WO_WO0084",
+        "status": null
+      },
+      {
+        "id": "WO_WO0085",
+        "status": null
+      },
+      {
+        "id": "WO_WO0091",
+        "status": null
+      },
+      {
+        "id": "WO_WO0098",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset005",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0018",
+        "status": null
+      },
+      {
+        "id": "WO_WO0019",
+        "status": null
+      },
+      {
+        "id": "WO_WO0027",
+        "status": null
+      },
+      {
+        "id": "WO_WO0035",
+        "status": null
+      },
+      {
+        "id": "WO_WO0055",
+        "status": null
+      },
+      {
+        "id": "WO_WO0069",
+        "status": null
+      },
+      {
+        "id": "WO_WO0081",
+        "status": null
+      },
+      {
+        "id": "WO_WO0093",
+        "status": null
+      },
+      {
+        "id": "WO_WO0096",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset006",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0001",
+        "status": null
+      },
+      {
+        "id": "WO_WO0005",
+        "status": null
+      },
+      {
+        "id": "WO_WO0014",
+        "status": null
+      },
+      {
+        "id": "WO_WO0025",
+        "status": null
+      },
+      {
+        "id": "WO_WO0040",
+        "status": null
+      },
+      {
+        "id": "WO_WO0043",
+        "status": null
+      },
+      {
+        "id": "WO_WO0047",
+        "status": null
+      },
+      {
+        "id": "WO_WO0058",
+        "status": null
+      },
+      {
+        "id": "WO_WO0064",
+        "status": null
+      },
+      {
+        "id": "WO_WO0071",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset007",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0010",
+        "status": null
+      },
+      {
+        "id": "WO_WO0048",
+        "status": null
+      },
+      {
+        "id": "WO_WO0049",
+        "status": null
+      },
+      {
+        "id": "WO_WO0050",
+        "status": null
+      },
+      {
+        "id": "WO_WO0054",
+        "status": null
+      },
+      {
+        "id": "WO_WO0066",
+        "status": null
+      },
+      {
+        "id": "WO_WO0079",
+        "status": null
+      },
+      {
+        "id": "WO_WO0092",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset008",
+    "facility": "Plant A",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0003",
+        "status": null
+      },
+      {
+        "id": "WO_WO0004",
+        "status": null
+      },
+      {
+        "id": "WO_WO0021",
+        "status": null
+      },
+      {
+        "id": "WO_WO0028",
+        "status": null
+      },
+      {
+        "id": "WO_WO0038",
+        "status": null
+      },
+      {
+        "id": "WO_WO0041",
+        "status": null
+      },
+      {
+        "id": "WO_WO0052",
+        "status": null
+      },
+      {
+        "id": "WO_WO0060",
+        "status": null
+      },
+      {
+        "id": "WO_WO0061",
+        "status": null
+      },
+      {
+        "id": "WO_WO0067",
+        "status": null
+      },
+      {
+        "id": "WO_WO0076",
+        "status": null
+      },
+      {
+        "id": "WO_WO0089",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset009",
+    "facility": "Plant B",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0006",
+        "status": null
+      },
+      {
+        "id": "WO_WO0013",
+        "status": null
+      },
+      {
+        "id": "WO_WO0031",
+        "status": null
+      },
+      {
+        "id": "WO_WO0046",
+        "status": null
+      },
+      {
+        "id": "WO_WO0053",
+        "status": null
+      },
+      {
+        "id": "WO_WO0057",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Asset010",
+    "facility": "Plant A",
+    "status": null,
+    "workOrders": [
+      {
+        "id": "WO_WO0007",
+        "status": null
+      },
+      {
+        "id": "WO_WO0020",
+        "status": null
+      },
+      {
+        "id": "WO_WO0022",
+        "status": null
+      },
+      {
+        "id": "WO_WO0029",
+        "status": null
+      },
+      {
+        "id": "WO_WO0037",
+        "status": null
+      },
+      {
+        "id": "WO_WO0042",
+        "status": null
+      },
+      {
+        "id": "WO_WO0051",
+        "status": null
+      },
+      {
+        "id": "WO_WO0056",
+        "status": null
+      },
+      {
+        "id": "WO_WO0063",
+        "status": null
+      },
+      {
+        "id": "WO_WO0078",
+        "status": null
+      },
+      {
+        "id": "WO_WO0082",
+        "status": null
+      },
+      {
+        "id": "WO_WO0083",
+        "status": null
+      },
+      {
+        "id": "WO_WO0086",
+        "status": null
+      }
+    ]
+  },
+  {
+    "asset": "Stamping Press 1",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 10",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 2",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 3",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 4",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 5",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 6",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 7",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 8",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  },
+  {
+    "asset": "Stamping Press 9",
+    "facility": null,
+    "status": null,
+    "workOrders": []
+  }
+]

@@ -15,9 +15,14 @@ def generate_knowledge_graph(ontology: Dict) -> Dict:
 
         logger.info(f"Processing {len(entities)} entities and {len(relationships)} relationships")
 
-        # Add nodes for entities
+        # Add nodes for entities, filtering out test data
         node_mapping = {}  # Track entity label to node_id mapping
         for entity in entities:
+            # Skip test data (Stamping Press assets)
+            if entity[1] == 'Asset' and 'Stamping Press' in entity[0]:
+                logger.debug(f"Skipping test asset: {entity[0]}")
+                continue
+
             node_id = f"entity_{len(G.nodes)}"
             G.add_node(node_id, label=entity[0], type=entity[1])
             node_mapping[entity[0]] = node_id
