@@ -43,16 +43,16 @@ export const uploadFile = async (file: File) => {
 };
 
 export const validateOntology = async (ontology: any) => {
-    const response = await api.post('/api/validate-ontology', { ontology });
+    const response = await api.post('/validate-ontology', { ontology });  // Remove /api prefix since it's in baseURL
     return response.data;
 };
 
 export const exportToNeo4j = async (graph: any) => {
-    const response = await api.post('/api/export-neo4j', { graph });
+    const response = await api.post('/export-neo4j', { graph });  // Remove /api prefix since it's in baseURL
     return response.data;
 };
 
 export const chat = async (query: string) => {
-    const response = await api.post('/api/chat', { query });
+    const response = await api.post('/chat', { query });  // Remove /api prefix since it's in baseURL
     return response.data;
 };

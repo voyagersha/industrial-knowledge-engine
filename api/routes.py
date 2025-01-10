@@ -50,21 +50,24 @@ def register_routes(app):
     @app.route('/api/validate-ontology', methods=['POST', 'OPTIONS'])
     def validate_ontology():
         """Validate ontology and generate graph."""
-        logger.info("Validate ontology endpoint hit")
+        logger.info(f"Validate ontology endpoint hit with method: {request.method}")
+        logger.debug(f"Request headers: {request.headers}")
 
         # Handle OPTIONS request for CORS preflight
         if request.method == 'OPTIONS':
+            logger.info("Handling OPTIONS preflight request")
             return '', 204
 
         try:
             data = request.json
+            logger.debug(f"Received data: {data}")
+
             if not data or 'ontology' not in data:
                 logger.error("Invalid request data")
                 return jsonify({'error': 'Invalid request data'}), 400
 
             validated_ontology = data.get('ontology')
-            logger.info(f"Received ontology with {len(validated_ontology.get('entities', []))} entities")
-            logger.debug(f"Validating ontology: {validated_ontology}")
+            logger.info(f"Processing ontology with {len(validated_ontology.get('entities', []))} entities")
 
             # Generate graph structure
             graph_data = generate_knowledge_graph(validated_ontology)
@@ -144,6 +147,28 @@ def register_routes(app):
 
         except Exception as e:
             logger.error(f"Error exporting to Neo4j: {str(e)}", exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/chat', methods=['POST', 'OPTIONS'])
+    def chat():
+        """Handle chat requests."""
+        logger.info("Chat endpoint hit")
+
+        # Handle OPTIONS request for CORS preflight
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        try:
+            data = request.json
+            if not data or 'query' not in data:
+                return jsonify({'error': 'No query provided'}), 400
+
+            from chat_handler import ChatHandler
+            handler = ChatHandler(db)
+            response = handler.get_response(data['query'])
+            return jsonify(response)
+        except Exception as e:
+            logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
             return jsonify({'error': str(e)}), 500
 
     logger.info("Routes registered successfully")

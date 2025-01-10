@@ -66,22 +66,6 @@ def health_check():
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    """Handle chat requests."""
-    try:
-        data = request.json
-        if not data or 'query' not in data:
-            return jsonify({'error': 'No query provided'}), 400
-
-        from chat_handler import ChatHandler
-        handler = ChatHandler(db)
-        response = handler.get_response(data['query'])
-        return jsonify(response)
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
 # Register routes
 from routes import register_routes
 register_routes(app)
