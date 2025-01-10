@@ -20,7 +20,10 @@ import { chat } from '../services/api';
 interface Message {
   text: string;
   isUser: boolean;
-  context?: string;
+  context?: {
+    type: string;
+    data: any[];
+  };
   timestamp: Date;
 }
 
@@ -92,6 +95,17 @@ const ChatInterface: React.FC = () => {
 
   const toggleContext = (index: number) => {
     setExpandedContext(expandedContext === index ? null : index);
+  };
+
+  const formatContext = (context: Message['context']) => {
+    if (!context) return '';
+
+    try {
+      return JSON.stringify(context.data, null, 2);
+    } catch (error) {
+      console.error('Error formatting context:', error);
+      return 'Error formatting context data';
+    }
   };
 
   return (
@@ -174,7 +188,7 @@ const ChatInterface: React.FC = () => {
                           }
                         }}
                       >
-                        <pre>{message.context}</pre>
+                        <pre>{formatContext(message.context)}</pre>
                       </Paper>
                     </Collapse>
                   </Box>
