@@ -4,6 +4,7 @@ from flask_cors import CORS
 import logging
 from database import db, init_db
 from sqlalchemy import text
+from flask_migrate import Migrate # Added import for Flask-Migrate
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS
 
 # Configure logging
@@ -23,9 +24,13 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Initialize database
 db.init_app(app)
+
+# Initialize Flask-Migrate
+migrate = Migrate(app, db) # Added Flask-Migrate initialization
+
 with app.app_context():
     # Make sure to import the models here so they can be created
-    from models import Node, Edge
+    from models import Node, Edge, User # Added User model
     db.create_all()
 
 @app.route('/health')

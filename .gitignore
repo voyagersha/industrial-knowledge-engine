@@ -74,3 +74,6 @@ npm-debug.log*
 coverage/
 .coverage
 .nyc_output/
+
+# Neo4j
+neo4j_data/

@@ -42,7 +42,12 @@ def register_routes(app):
         logger.info("Validate ontology endpoint hit")
         try:
             data = request.json
-            validated_ontology = data.get('ontology', {})
+            validated_ontology = data.get('ontology') if data else {}
+
+            # Initialize empty ontology if none provided
+            if validated_ontology is None:
+                validated_ontology = {'entities': [], 'relationships': [], 'attributes': []}
+
             logger.info(f"Received ontology with {len(validated_ontology.get('entities', []))} entities")
             logger.debug(f"Validating ontology: {validated_ontology}")
 
@@ -80,12 +85,12 @@ def register_routes(app):
                 for node_data in graph_data.get('nodes', []):
                     logger.debug(f"Creating node: {node_data}")
                     node = Node(
-                        label=node_data['label'],
-                        type=node_data['type'],
-                        properties={'id': node_data['id']}
+                        label=node_data.get('label', ''),
+                        type=node_data.get('type', 'Unknown'),
+                        properties={'id': node_data.get('id')}
                     )
                     db.session.add(node)
-                    nodes[node_data['id']] = node
+                    nodes[node_data.get('id')] = node
 
                 db.session.commit()
                 logger.info(f"Created {len(nodes)} nodes")
@@ -93,15 +98,17 @@ def register_routes(app):
                 # Create relationships
                 edge_count = 0
                 for edge in graph_data.get('edges', []):
-                    if edge['source'] not in nodes or edge['target'] not in nodes:
+                    source_id = edge.get('source')
+                    target_id = edge.get('target')
+                    if not source_id or not target_id or source_id not in nodes or target_id not in nodes:
                         logger.warning(f"Skipping edge due to missing nodes: {edge}")
                         continue
 
-                    logger.debug(f"Creating relationship: {edge['source']} -{edge['type']}-> {edge['target']}")
+                    logger.debug(f"Creating relationship: {source_id} -{edge.get('type', 'Unknown')}-> {target_id}")
                     new_edge = Edge(
-                        source=nodes[edge['source']],
-                        target=nodes[edge['target']],
-                        type=edge['type']
+                        source=nodes[source_id],
+                        target=nodes[target_id],
+                        type=edge.get('type', 'Unknown')
                     )
                     db.session.add(new_edge)
                     edge_count += 1
@@ -109,7 +116,9 @@ def register_routes(app):
                 db.session.commit()
                 logger.info(f"Created {edge_count} relationships")
 
-                return jsonify({'message': f'Graph exported to database successfully. Created {len(nodes)} nodes and {edge_count} edges.'})
+                return jsonify({
+                    'message': f'Graph exported to database successfully. Created {len(nodes)} nodes and {edge_count} edges.'
+                })
 
             except Exception as e:
                 logger.error(f"Error during database export: {str(e)}", exc_info=True)

@@ -2,7 +2,6 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
-from py2neo import Graph
 import logging
 import tempfile
 
@@ -21,10 +20,6 @@ CORS(app,
      resources={r"/*": {"origins": "*"}},
      supports_credentials=True)
 
-# Create a temporary directory for Neo4j data
-TEMP_DIR = tempfile.mkdtemp()
-NEO4J_URI = f"file://{TEMP_DIR}"
-
 @app.before_request
 def log_request_info():
     """Log details about every incoming request."""
@@ -32,18 +27,6 @@ def log_request_info():
     logger.debug('Body: %s', request.get_data())
     logger.debug('URL: %s', request.url)
     logger.debug('Method: %s', request.method)
-
-def get_graph():
-    """Get or create Neo4j graph connection using embedded mode."""
-    try:
-        graph = Graph(NEO4J_URI)
-        # Test connection with a simple query
-        graph.run("RETURN 1")
-        logger.info("Successfully connected to Neo4j (embedded mode)")
-        return graph
-    except Exception as e:
-        logger.error(f"Failed to connect to Neo4j: {str(e)}")
-        return None
 
 @app.route('/health')
 def health_check():

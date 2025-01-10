@@ -2,18 +2,14 @@ import os
 import pytest
 from app import app as flask_app
 from database import db
-import tempfile
 
 @pytest.fixture
 def app():
     """Create and configure a new app instance for each test."""
-    # Create a temporary file to use as a database file
-    db_fd, db_path = tempfile.mkstemp()
-    
-    # Create the app with test config
+    # Use an in-memory SQLite database for testing
     flask_app.config.update({
         'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path}',
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
         'SQLALCHEMY_TRACK_MODIFICATIONS': False,
         'WTF_CSRF_ENABLED': False
     })
@@ -24,9 +20,10 @@ def app():
 
     yield flask_app
 
-    # Close and remove the temporary database
-    os.close(db_fd)
-    os.unlink(db_path)
+    # Clean up after the test
+    with flask_app.app_context():
+        db.session.remove()
+        db.drop_all()
 
 @pytest.fixture
 def client(app):
