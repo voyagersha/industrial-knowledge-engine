@@ -28,6 +28,16 @@ interface Message {
   timestamp: Date;
 }
 
+interface ChatResponse {
+  response: string;
+  context?: {
+    type: string;
+    data: any[];
+    system_note?: string;
+  };
+  error?: string;
+}
+
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -98,7 +108,7 @@ const ChatInterface: React.FC = () => {
     setExpandedContext(expandedContext === index ? null : index);
   };
 
-  const formatContext = (context: Message['context']) => {
+  const formatContext = (context: Message['context']): string => {
     if (!context || !context.data) return '';
 
     try {
@@ -156,7 +166,9 @@ const ChatInterface: React.FC = () => {
                     position: 'relative'
                   }}
                 >
-                  <Typography variant="body1">{message.text}</Typography>
+                  <Typography variant="body1" sx={{ wordBreak: 'break-word' }}>
+                    {message.text}
+                  </Typography>
                   <Typography
                     variant="caption"
                     sx={{
@@ -171,7 +183,7 @@ const ChatInterface: React.FC = () => {
                 </Paper>
 
                 {message.context && !message.isUser && (
-                  <Box sx={{ mt: 1, alignSelf: 'flex-start' }}>
+                  <Box sx={{ mt: 1, alignSelf: 'flex-start', width: '100%' }}>
                     <Button
                       size="small"
                       onClick={() => toggleContext(index)}
@@ -190,7 +202,8 @@ const ChatInterface: React.FC = () => {
                           '& pre': {
                             margin: 0,
                             whiteSpace: 'pre-wrap',
-                            wordWrap: 'break-word'
+                            wordBreak: 'break-word',
+                            overflowX: 'auto'
                           }
                         }}
                       >

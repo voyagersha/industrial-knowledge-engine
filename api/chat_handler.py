@@ -1,18 +1,38 @@
 import os
 import logging
-from typing import Dict, List
-from openai import OpenAI
+from typing import Dict, List, Optional, TypedDict
+from openai import OpenAI, APIError
 import json
-from datetime import datetime
 from sqlalchemy import text
 from models import Node, Edge, db
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+class WorkOrder(TypedDict):
+    id: str
+    status: Optional[str]
+    type: str
+
+class Asset(TypedDict):
+    asset: str
+    facility: str
+    status: Optional[str]
+    workOrders: List[WorkOrder]
+
+class AssetContext(TypedDict):
+    type: str
+    data: List[Asset]
+    system_note: Optional[str]
+
 class ChatHandler:
     def __init__(self, db):
-        self.openai = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            logger.error("OpenAI API key not found in environment variables")
+            raise ValueError("OpenAI API key is required")
+
+        self.openai = OpenAI(api_key=api_key)
         self.db = db
 
     def _analyze_query_intent(self, query: str) -> Dict[str, float]:
@@ -37,90 +57,137 @@ class ChatHandler:
         logger.debug(f"Query intent analysis: {intents}")
         return intents
 
-    def _get_asset_context(self) -> Dict:
+    def _get_asset_context(self) -> AssetContext:
         """Get asset-specific context using optimized queries."""
         try:
-            # First get a count of work orders for debugging
-            count_query = text("""
-                SELECT COUNT(DISTINCT wo.id) 
-                FROM node wo 
-                WHERE wo.type = 'WorkOrder'
-            """)
-            result = db.session.execute(count_query)
-            total_wo_count = result.scalar()
-            logger.info(f"Total work orders in database: {total_wo_count}")
+            with db.session.begin():
+                # First get a count of work orders for debugging
+                count_query = text("""
+                    SELECT COUNT(DISTINCT wo.id) 
+                    FROM node wo 
+                    WHERE wo.type = 'WorkOrder'
+                """)
+                result = db.session.execute(count_query)
+                total_wo_count = result.scalar()
+                logger.info(f"Total work orders in database: {total_wo_count}")
 
-            # Get assets with their work orders using a simpler query
-            query = text("""
-                WITH base_assets AS (
-                    -- Get unique assets with their facilities
-                    SELECT DISTINCT ON (a.id)
-                        a.id as asset_id,
-                        a.label as asset_label,
-                        a.properties as asset_properties,
-                        f.label as facility_label
-                    FROM node a
-                    LEFT JOIN edge e_f ON a.id = e_f.target_id AND e_f.type = 'LOCATED_IN'
-                    LEFT JOIN node f ON e_f.source_id = f.id AND f.type = 'Facility'
-                    WHERE a.type = 'Asset'
-                    ORDER BY a.id, f.label
-                )
-                SELECT 
-                    ba.*,
-                    wo.id as wo_id,
-                    wo.label as wo_label,
-                    e_wo.type as wo_type
-                FROM base_assets ba
-                LEFT JOIN edge e_wo ON ba.asset_id = e_wo.target_id AND e_wo.type = 'MAINTAINS'
-                LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
-                ORDER BY ba.asset_label, wo.label;
-            """)
+                # Get assets with their work orders using a simpler query
+                query = text("""
+                    WITH base_assets AS (
+                        -- Get unique assets with their facilities
+                        SELECT DISTINCT ON (a.id)
+                            a.id as asset_id,
+                            a.label as asset_label,
+                            a.properties as asset_properties,
+                            f.label as facility_label
+                        FROM node a
+                        LEFT JOIN edge e_f ON a.id = e_f.target_id AND e_f.type = 'LOCATED_IN'
+                        LEFT JOIN node f ON e_f.source_id = f.id AND f.type = 'Facility'
+                        WHERE a.type = 'Asset'
+                        ORDER BY a.id, f.label
+                    )
+                    SELECT 
+                        ba.*,
+                        wo.id as wo_id,
+                        wo.label as wo_label,
+                        e_wo.type as wo_type
+                    FROM base_assets ba
+                    LEFT JOIN edge e_wo ON ba.asset_id = e_wo.target_id AND e_wo.type = 'MAINTAINS'
+                    LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
+                    ORDER BY ba.asset_label, wo.label;
+                """)
 
-            result = db.session.execute(query)
+                result = db.session.execute(query)
 
-            # Process results into the required format
-            assets_dict = {}
-            for row in result:
-                asset_id = row.asset_id
-                if asset_id not in assets_dict:
-                    assets_dict[asset_id] = {
-                        'asset': row.asset_label,
-                        'facility': row.facility_label,
-                        'status': row.asset_properties.get('status') if row.asset_properties else None,
-                        'workOrders': []
-                    }
+                # Process results into the required format
+                assets_dict: Dict[int, Asset] = {}
+                for row in result:
+                    asset_id = row.asset_id
+                    if asset_id not in assets_dict:
+                        assets_dict[asset_id] = {
+                            'asset': row.asset_label,
+                            'facility': row.facility_label,
+                            'status': row.asset_properties.get('status') if row.asset_properties else None,
+                            'workOrders': []
+                        }
 
-                if row.wo_id:  # Only add work orders if they exist
-                    work_order = {
-                        'id': row.wo_label,
-                        'status': None,
-                        'type': row.wo_type
-                    }
-                    # Avoid duplicates
-                    if not any(wo['id'] == work_order['id'] for wo in assets_dict[asset_id]['workOrders']):
-                        assets_dict[asset_id]['workOrders'].append(work_order)
+                    if row.wo_id:  # Only add work orders if they exist
+                        work_order: WorkOrder = {
+                            'id': row.wo_label,
+                            'status': None,
+                            'type': row.wo_type
+                        }
+                        # Avoid duplicates
+                        if not any(wo['id'] == work_order['id'] for wo in assets_dict[asset_id]['workOrders']):
+                            assets_dict[asset_id]['workOrders'].append(work_order)
 
-            asset_contexts = list(assets_dict.values())
-            total_work_orders = sum(len(asset['workOrders']) for asset in asset_contexts)
-            logger.info(f"Processed {len(asset_contexts)} assets with {total_work_orders} total work orders")
+                asset_contexts = list(assets_dict.values())
+                total_work_orders = sum(len(asset['workOrders']) for asset in asset_contexts)
+                logger.info(f"Processed {len(asset_contexts)} assets with {total_work_orders} total work orders")
 
-            # Log detail for each asset
-            for asset in asset_contexts:
-                logger.debug(f"Asset {asset['asset']} has {len(asset['workOrders'])} work orders")
-
-            return {
-                "type": "asset_context",
-                "data": asset_contexts,
-                "system_note": f"""
-                There are {total_work_orders} work orders distributed across {len(asset_contexts)} assets.
-                Each work order is uniquely associated with one asset through a 'MAINTAINS' relationship.
-                Assets can be located in different facilities but work orders are counted only once.
-                """
-            }
+                return {
+                    "type": "asset_context",
+                    "data": asset_contexts,
+                    "system_note": f"""
+                    There are {total_work_orders} work orders distributed across {len(asset_contexts)} assets.
+                    Each work order is uniquely associated with one asset through a 'MAINTAINS' relationship.
+                    Assets can be located in different facilities but work orders are counted only once.
+                    """
+                }
 
         except Exception as e:
             logger.error(f"Error in _get_asset_context: {str(e)}", exc_info=True)
-            return {"type": "asset_context", "data": []}
+            return {"type": "asset_context", "data": [], "system_note": None}
+
+    def get_response(self, user_query: str) -> Dict:
+        """Generate response using context."""
+        try:
+            logger.info(f"Processing chat query: {user_query}")
+            context = self._get_asset_context()  # Always use asset context for work order queries
+            logger.debug(f"Generated context: {json.dumps(context, indent=2)}")
+
+            system_message = """You are an expert in enterprise asset management and maintenance operations.
+            When analyzing and responding to queries:
+            1. Focus on the most relevant information based on the query intent
+            2. If the data is empty or missing, explicitly state that and suggest checking if data has been uploaded
+            3. Highlight key relationships between assets, facilities, and work orders
+            4. Keep responses clear and focused on the user's needs
+            5. When counting work orders, include the total number and break it down by facility if applicable"""
+
+            try:
+                response = self.openai.chat.completions.create(
+                    model="gpt-4-turbo-preview",
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {
+                            "role": "user", 
+                            "content": f"Based on this context:\n{json.dumps(context, indent=2)}\n\nQuestion: {user_query}"
+                        }
+                    ],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+
+                if not response.choices or not response.choices[0].message:
+                    raise ValueError("Empty response received from OpenAI")
+
+                return {
+                    "response": response.choices[0].message.content,
+                    "context": context
+                }
+
+            except APIError as e:
+                logger.error(f"OpenAI API error: {str(e)}", exc_info=True)
+                raise
+            except Exception as e:
+                logger.error(f"Error generating OpenAI response: {str(e)}", exc_info=True)
+                raise
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            return {
+                "error": "Failed to process your question",
+                "details": str(e)
+            }
 
     def _get_general_context(self) -> Dict:
         """Get general context about the knowledge graph."""
@@ -231,51 +298,3 @@ class ChatHandler:
         except Exception as e:
             logger.error(f"Error getting context: {str(e)}", exc_info=True)
             return {'type': 'error', 'data': []}
-
-
-    def get_response(self, user_query: str) -> Dict:
-        """Generate response using context."""
-        try:
-            logger.info(f"Processing chat query: {user_query}")
-            context = self._get_asset_context()  # Always use asset context for work order queries
-            logger.debug(f"Generated context: {json.dumps(context, indent=2)}")
-
-            system_message = """You are an expert in enterprise asset management and maintenance operations.
-            When analyzing and responding to queries:
-            1. Focus on the most relevant information based on the query intent
-            2. If the data is empty or missing, explicitly state that and suggest checking if data has been uploaded
-            3. Highlight key relationships between assets, facilities, and work orders
-            4. Keep responses clear and focused on the user's needs
-            5. When counting work orders, include the total number and break it down by facility if applicable"""
-
-            try:
-                response = self.openai.chat.completions.create(
-                    model="gpt-4-turbo-preview",
-                    messages=[
-                        {"role": "system", "content": system_message},
-                        {
-                            "role": "user", 
-                            "content": f"Based on this context:\n{json.dumps(context, indent=2)}\n\nQuestion: {user_query}"
-                        }
-                    ],
-                    temperature=0.7,
-                    max_tokens=1000
-                )
-
-                if not response.choices or not response.choices[0].message:
-                    raise ValueError("Empty response received from OpenAI")
-
-                return {
-                    "response": response.choices[0].message.content,
-                    "context": context
-                }
-
-            except Exception as e:
-                logger.error(f"OpenAI API error: {str(e)}", exc_info=True)
-                raise
-        except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
-            return {
-                "error": "Failed to process your question",
-                "details": str(e)
-            }

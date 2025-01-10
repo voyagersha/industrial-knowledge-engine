@@ -25,16 +25,27 @@ interface OntologyValidatorProps {
   onValidated: (graph: any) => void;
 }
 
+// Define a type for the validated ontology structure
+type ValidatedOntology = {
+  entities: [string, string][];
+  relationships: {
+    source: string;
+    target: string;
+    type: string;
+  }[];
+}
+
 const OntologyValidator: React.FC<OntologyValidatorProps> = ({
   ontology,
   onValidated,
 }) => {
-  const [validatedOntology, setValidatedOntology] = React.useState(ontology);
+  const [validatedOntology, setValidatedOntology] = React.useState<ValidatedOntology>(ontology);
 
-  const handleDelete = (type: string, index: number) => {
-    const updated = { ...validatedOntology };
-    updated[type] = updated[type].filter((_: any, i: number) => i !== index);
-    setValidatedOntology(updated);
+  const handleDelete = (type: 'entities' | 'relationships', index: number) => {
+    setValidatedOntology(prev => ({
+      ...prev,
+      [type]: prev[type].filter((_: any, i: number) => i !== index)
+    }));
   };
 
   const handleValidate = async () => {
@@ -55,7 +66,7 @@ const OntologyValidator: React.FC<OntologyValidatorProps> = ({
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Entities</Typography>
         <List>
-          {validatedOntology.entities.map((entity: any, index: number) => (
+          {validatedOntology.entities.map((entity, index) => (
             <ListItem key={index}>
               <ListItemText 
                 primary={entity[0]}
@@ -74,7 +85,7 @@ const OntologyValidator: React.FC<OntologyValidatorProps> = ({
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Relationships</Typography>
         <List>
-          {validatedOntology.relationships.map((rel: any, index: number) => (
+          {validatedOntology.relationships.map((rel, index) => (
             <ListItem key={index}>
               <ListItemText 
                 primary={`${rel.source} → ${rel.target}`}
