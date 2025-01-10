@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Box, Paper, Button, Typography } from '@mui/material';
+import { Box, Paper, Typography } from '@mui/material';
 import * as d3 from 'd3';
-import { exportToNeo4j } from '../services/api';
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
@@ -22,16 +21,6 @@ interface GraphViewerProps {
 
 const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
   const svgRef = useRef<SVGSVGElement>(null);
-
-  const handleExport = async () => {
-    try {
-      await exportToNeo4j(graph);
-      alert('Graph exported to Neo4j successfully!');
-    } catch (error) {
-      console.error('Error exporting to Neo4j:', error);
-      alert('Error exporting graph');
-    }
-  };
 
   useEffect(() => {
     if (!graph || !svgRef.current) return;
@@ -189,13 +178,6 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graph }) => {
           <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
         </Box>
       </Paper>
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={handleExport}
-      >
-        Export to Neo4j
-      </Button>
     </Box>
   );
 };
