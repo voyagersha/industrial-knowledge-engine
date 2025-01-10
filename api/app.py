@@ -1,17 +1,18 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
 from database import db, init_db
 from flask_migrate import Migrate
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS
+from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend/dist')
 
 # Configure database
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
@@ -39,6 +40,16 @@ def log_request_info():
     logger.debug('Body: %s', request.get_data())
     logger.debug('URL: %s', request.url)
     logger.debug('Method: %s', request.method)
+
+@app.route('/')
+def serve_frontend():
+    """Serve the frontend application."""
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files from the frontend build."""
+    return send_from_directory(app.static_folder, path)
 
 @app.route('/health')
 def health_check():
