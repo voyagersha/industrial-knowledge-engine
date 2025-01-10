@@ -35,6 +35,7 @@ class ChatHandler:
             score = sum(2.0 if word in query_lower else 0.0 for word in keywords)
             intents[intent] = min(1.0, score / 4.0)  # Normalize to [0,1]
 
+        logger.debug(f"Query intent analysis: {intents}")
         return intents
 
     def _get_relevant_context(self, query: str) -> Dict:
@@ -44,53 +45,97 @@ class ChatHandler:
             primary_intent = max(intents.items(), key=lambda x: x[1])[0]
             logger.info(f"Primary intent detected: {primary_intent}")
 
+            # Debug database state
+            logger.debug(f"Total nodes in database: {Node.query.count()}")
+            logger.debug(f"Total edges in database: {Edge.query.count()}")
+            logger.debug(f"Asset nodes: {Node.query.filter_by(type='Asset').count()}")
+
             if primary_intent == 'asset':
                 return self._get_asset_context()
             elif primary_intent == 'facility':
                 return self._get_facility_context()
             else:
-                return {'type': 'general_context', 'data': []}
+                logger.info("No specific context type matched, returning general context")
+                return self._get_general_context()
 
         except Exception as e:
             logger.error(f"Error getting context: {str(e)}", exc_info=True)
             return {'type': 'error', 'data': []}
 
+    def _get_general_context(self) -> Dict:
+        """Get general context about the knowledge graph."""
+        try:
+            context = {
+                'nodes': Node.query.count(),
+                'edges': Edge.query.count(),
+                'asset_count': Node.query.filter_by(type='Asset').count(),
+                'facility_count': Node.query.filter_by(type='Facility').count()
+            }
+            return {
+                'type': 'general_context',
+                'data': [context]
+            }
+        except Exception as e:
+            logger.error(f"Error getting general context: {str(e)}", exc_info=True)
+            return {'type': 'general_context', 'data': []}
+
     def _get_facility_context(self) -> Dict:
         """Get facility-specific context."""
         facilities = []
-        for facility in Node.query.filter_by(type='Facility').all():
-            facility_data = {
-                'facility': facility.label,
-                'assets': [],
-                'workOrderCount': 0
-            }
+        try:
+            facility_nodes = Node.query.filter_by(type='Facility').all()
+            logger.debug(f"Found {len(facility_nodes)} facility nodes")
 
-            # Get assets in this facility
-            for edge in facility.incoming_edges:
-                if edge.source.type == 'Asset':
+            for facility in facility_nodes:
+                facility_data = {
+                    'facility': facility.label,
+                    'assets': [],
+                    'workOrderCount': 0
+                }
+
+                # Get assets in this facility
+                asset_edges = Edge.query.join(
+                    Node, Edge.source_id == Node.id
+                ).filter(
+                    Node.type == 'Asset',
+                    Edge.target_id == facility.id,
+                    Edge.type == 'LOCATED_IN'
+                ).all()
+
+                logger.debug(f"Found {len(asset_edges)} assets for facility {facility.label}")
+
+                for edge in asset_edges:
+                    asset = edge.source
                     facility_data['assets'].append({
-                        'name': edge.source.label,
-                        'status': edge.source.properties.get('status') if edge.source.properties else None
+                        'name': asset.label,
+                        'status': asset.properties.get('status') if asset.properties else None
                     })
 
-            # Count work orders
-            work_order_count = Edge.query.join(Node, Edge.source_id == Node.id)\
-                .filter(Node.type == 'WorkOrder')\
-                .filter(Edge.target_id == facility.id)\
-                .count()
+                # Count work orders
+                work_order_count = Edge.query.join(
+                    Node, Edge.source_id == Node.id
+                ).filter(
+                    Node.type == 'WorkOrder',
+                    Edge.target_id == facility.id
+                ).count()
 
-            facility_data['workOrderCount'] = work_order_count
-            facilities.append(facility_data)
+                facility_data['workOrderCount'] = work_order_count
+                facilities.append(facility_data)
 
-        return {
-            "type": "facility_context",
-            "data": facilities
-        }
+            logger.info(f"Returning context for {len(facilities)} facilities")
+            return {
+                "type": "facility_context",
+                "data": facilities
+            }
+        except Exception as e:
+            logger.error(f"Error in _get_facility_context: {str(e)}", exc_info=True)
+            return {"type": "facility_context", "data": []}
 
     def _get_asset_context(self) -> Dict:
         """Get asset-specific context."""
         try:
             assets = Node.query.filter_by(type='Asset').all()
+            logger.debug(f"Found {len(assets)} asset nodes")
             asset_contexts = []
 
             for asset in assets:
@@ -102,18 +147,26 @@ class ChatHandler:
                 }
 
                 # Get facility for this asset
-                facility_edge = Edge.query.join(Node, Edge.target_id == Node.id)\
-                    .filter(Edge.source_id == asset.id)\
-                    .filter(Node.type == 'Facility')\
-                    .first()
+                facility_edge = Edge.query.join(
+                    Node, Edge.target_id == Node.id
+                ).filter(
+                    Edge.source_id == asset.id,
+                    Node.type == 'Facility',
+                    Edge.type == 'LOCATED_IN'
+                ).first()
+
                 if facility_edge:
                     asset_data['facility'] = facility_edge.target.label
 
                 # Get work orders for this asset
-                work_orders = Edge.query.join(Node, Edge.source_id == Node.id)\
-                    .filter(Edge.target_id == asset.id)\
-                    .filter(Node.type == 'WorkOrder')\
-                    .all()
+                work_orders = Edge.query.join(
+                    Node, Edge.source_id == Node.id
+                ).filter(
+                    Edge.target_id == asset.id,
+                    Node.type == 'WorkOrder'
+                ).all()
+
+                logger.debug(f"Found {len(work_orders)} work orders for asset {asset.label}")
 
                 for wo in work_orders:
                     asset_data['workOrders'].append({
@@ -123,6 +176,7 @@ class ChatHandler:
 
                 asset_contexts.append(asset_data)
 
+            logger.info(f"Returning context for {len(asset_contexts)} assets")
             return {
                 "type": "asset_context",
                 "data": asset_contexts
@@ -137,12 +191,14 @@ class ChatHandler:
         try:
             logger.info(f"Processing chat query: {user_query}")
             context = self._get_relevant_context(user_query)
+            logger.debug(f"Generated context: {json.dumps(context, indent=2)}")
 
             system_message = """You are an expert in enterprise asset management and maintenance operations.
             When analyzing and responding to queries:
             1. Focus on the most relevant information based on the query intent
-            2. Highlight key relationships between assets, facilities, and work orders
-            3. Keep responses clear and focused on the user's needs"""
+            2. If the data is empty or missing, explicitly state that and suggest checking if data has been uploaded
+            3. Highlight key relationships between assets, facilities, and work orders
+            4. Keep responses clear and focused on the user's needs"""
 
             try:
                 response = self.openai.chat.completions.create(
