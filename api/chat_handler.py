@@ -4,6 +4,7 @@ from typing import Dict, List
 from openai import OpenAI
 import json
 from datetime import datetime
+from sqlalchemy import text
 from models import Node, Edge, db
 
 logger = logging.getLogger(__name__)
@@ -23,44 +24,80 @@ class ChatHandler:
             'maintenance': 0.0
         }
 
-        # Keywords for each intent
         intent_keywords = {
             'facility': ['facility', 'building', 'location', 'site', 'plant'],
             'asset': ['asset', 'equipment', 'machine', 'device', 'system'],
-            'maintenance': ['maintenance', 'repair', 'fix', 'broken', 'issue']
+            'maintenance': ['maintenance', 'repair', 'fix', 'broken', 'issue', 'work order', 'workorder']
         }
 
-        # Calculate scores based on keyword presence
         for intent, keywords in intent_keywords.items():
             score = sum(2.0 if word in query_lower else 0.0 for word in keywords)
-            intents[intent] = min(1.0, score / 4.0)  # Normalize to [0,1]
+            intents[intent] = min(1.0, score / 4.0)
 
         logger.debug(f"Query intent analysis: {intents}")
         return intents
 
-    def _get_relevant_context(self, query: str) -> Dict:
-        """Get relevant context based on query analysis."""
+    def _get_asset_context(self) -> Dict:
+        """Get asset-specific context using optimized queries."""
         try:
-            intents = self._analyze_query_intent(query)
-            primary_intent = max(intents.items(), key=lambda x: x[1])[0]
-            logger.info(f"Primary intent detected: {primary_intent}")
+            # Use a single efficient query to get all asset data
+            query = text("""
+                WITH asset_data AS (
+                    SELECT 
+                        a.id as asset_id,
+                        a.label as asset_label,
+                        a.properties as asset_properties,
+                        f.label as facility_label,
+                        COUNT(DISTINCT wo.id) as work_order_count
+                    FROM node a
+                    LEFT JOIN edge e_f ON a.id = e_f.source_id
+                    LEFT JOIN node f ON e_f.target_id = f.id AND f.type = 'Facility'
+                    LEFT JOIN edge e_wo ON a.id = e_wo.target_id
+                    LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
+                    WHERE a.type = 'Asset'
+                    GROUP BY a.id, a.label, a.properties, f.label
+                )
+                SELECT 
+                    ad.*,
+                    json_agg(
+                        json_build_object(
+                            'id', wo.label,
+                            'status', wo.properties->>'status',
+                            'type', e_wo.type
+                        )
+                    ) FILTER (WHERE wo.id IS NOT NULL) as work_orders
+                FROM asset_data ad
+                LEFT JOIN edge e_wo ON ad.asset_id = e_wo.target_id
+                LEFT JOIN node wo ON e_wo.source_id = wo.id AND wo.type = 'WorkOrder'
+                GROUP BY 
+                    ad.asset_id, 
+                    ad.asset_label, 
+                    ad.asset_properties, 
+                    ad.facility_label, 
+                    ad.work_order_count
+            """)
 
-            # Debug database state
-            logger.debug(f"Total nodes in database: {Node.query.count()}")
-            logger.debug(f"Total edges in database: {Edge.query.count()}")
-            logger.debug(f"Asset nodes: {Node.query.filter_by(type='Asset').count()}")
+            result = db.session.execute(query)
+            asset_contexts = []
 
-            if primary_intent == 'asset':
-                return self._get_asset_context()
-            elif primary_intent == 'facility':
-                return self._get_facility_context()
-            else:
-                logger.info("No specific context type matched, returning general context")
-                return self._get_general_context()
+            for row in result:
+                asset_data = {
+                    'asset': row.asset_label,
+                    'facility': row.facility_label,
+                    'status': row.asset_properties.get('status') if row.asset_properties else None,
+                    'workOrders': row.work_orders if row.work_orders else []
+                }
+                asset_contexts.append(asset_data)
+
+            logger.info(f"Returning context for {len(asset_contexts)} assets")
+            return {
+                "type": "asset_context",
+                "data": asset_contexts
+            }
 
         except Exception as e:
-            logger.error(f"Error getting context: {str(e)}", exc_info=True)
-            return {'type': 'error', 'data': []}
+            logger.error(f"Error in _get_asset_context: {str(e)}", exc_info=True)
+            return {"type": "asset_context", "data": []}
 
     def _get_general_context(self) -> Dict:
         """Get general context about the knowledge graph."""
@@ -148,66 +185,36 @@ class ChatHandler:
             logger.error(f"Error in _get_facility_context: {str(e)}", exc_info=True)
             return {"type": "facility_context", "data": []}
 
-    def _get_asset_context(self) -> Dict:
-        """Get asset-specific context."""
+    def _get_relevant_context(self, query: str) -> Dict:
+        """Get relevant context based on query analysis."""
         try:
-            assets = Node.query.filter_by(type='Asset').all()
-            logger.debug(f"Found {len(assets)} asset nodes")
-            asset_contexts = []
+            intents = self._analyze_query_intent(query)
+            primary_intent = max(intents.items(), key=lambda x: x[1])[0]
+            logger.info(f"Primary intent detected: {primary_intent}")
 
-            for asset in assets:
-                asset_data = {
-                    'asset': asset.label,
-                    'facility': None,
-                    'status': asset.properties.get('status') if asset.properties else None,
-                    'workOrders': []
-                }
+            # Debug database state
+            logger.debug(f"Total nodes in database: {Node.query.count()}")
+            logger.debug(f"Total edges in database: {Edge.query.count()}")
+            logger.debug(f"Asset nodes: {Node.query.filter_by(type='Asset').count()}")
 
-                # Get facility for this asset
-                facility_edge = Edge.query.join(
-                    Node, Edge.target_id == Node.id
-                ).filter(
-                    Edge.source_id == asset.id,
-                    Node.type == 'Facility',
-                    Edge.type == 'LOCATED_IN'
-                ).first()
-
-                if facility_edge:
-                    asset_data['facility'] = facility_edge.target.label
-
-                # Get work orders for this asset
-                work_orders = Edge.query.join(
-                    Node, Edge.source_id == Node.id
-                ).filter(
-                    Edge.target_id == asset.id,
-                    Node.type == 'WorkOrder'
-                ).all()
-
-                logger.debug(f"Found {len(work_orders)} work orders for asset {asset.label}")
-
-                for wo in work_orders:
-                    asset_data['workOrders'].append({
-                        'id': wo.source.label,
-                        'status': wo.source.properties.get('status') if wo.source.properties else None
-                    })
-
-                asset_contexts.append(asset_data)
-
-            logger.info(f"Returning context for {len(asset_contexts)} assets")
-            return {
-                "type": "asset_context",
-                "data": asset_contexts
-            }
+            if primary_intent == 'asset':
+                return self._get_asset_context()
+            elif primary_intent == 'facility':
+                return self._get_facility_context()
+            else:
+                logger.info("No specific context type matched, returning general context")
+                return self._get_general_context()
 
         except Exception as e:
-            logger.error(f"Error in _get_asset_context: {str(e)}", exc_info=True)
-            return {"type": "asset_context", "data": []}
+            logger.error(f"Error getting context: {str(e)}", exc_info=True)
+            return {'type': 'error', 'data': []}
+
 
     def get_response(self, user_query: str) -> Dict:
         """Generate response using context."""
         try:
             logger.info(f"Processing chat query: {user_query}")
-            context = self._get_relevant_context(user_query)
+            context = self._get_asset_context()  # Always use asset context for work order queries
             logger.debug(f"Generated context: {json.dumps(context, indent=2)}")
 
             system_message = """You are an expert in enterprise asset management and maintenance operations.
@@ -215,7 +222,8 @@ class ChatHandler:
             1. Focus on the most relevant information based on the query intent
             2. If the data is empty or missing, explicitly state that and suggest checking if data has been uploaded
             3. Highlight key relationships between assets, facilities, and work orders
-            4. Keep responses clear and focused on the user's needs"""
+            4. Keep responses clear and focused on the user's needs
+            5. When counting work orders, include the total number and break it down by facility if applicable"""
 
             try:
                 response = self.openai.chat.completions.create(
