@@ -1,0 +1,120 @@
+how many workorders exist in the graph
+
+09:57 PM
+Based on the provided context, there are 0 work orders in the graph. Both Plant A and Plant B have assets listed, but each of these assets has an empty list of work orders, indicating that no work orders have been logged or assigned to these assets at the time of this data snapshot.
+
+09:57 PM
+[
+  {
+    "assets": [
+      {
+        "name": "Asset001",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset002",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset003",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset004",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset005",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset006",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset007",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset008",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset009",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset010",
+        "status": null,
+        "workOrders": []
+      }
+    ],
+    "facility": "Plant A",
+    "workOrderCount": 0
+  },
+  {
+    "assets": [
+      {
+        "name": "Asset001",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset002",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset003",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset004",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset005",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset006",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset007",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset008",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset009",
+        "status": null,
+        "workOrders": []
+      },
+      {
+        "name": "Asset010",
+        "status": null,
+        "workOrders": []
+      }
+    ],
+    "facility": "Plant B",
+    "workOrderCount": 0
+  }
+]

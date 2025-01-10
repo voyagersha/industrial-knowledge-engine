@@ -91,9 +91,9 @@ class ChatHandler:
                 work_order_count = Edge.query.join(
                     Node, Edge.source_id == Node.id
                 ).filter(
-                    Node.type == 'WorkOrder',
-                    Edge.target_id == facility.id,
-                    Edge.type == 'ASSIGNED_TO'
+                    Node.type == 'WorkOrder'
+                ).filter(
+                    Edge.target_id == facility.id
                 ).count()
 
                 logger.debug(f"Found {work_order_count} work orders for facility {facility.label}")
@@ -109,8 +109,7 @@ class ChatHandler:
                     Node, Edge.source_id == Node.id
                 ).filter(
                     Node.type == 'Asset',
-                    Edge.target_id == facility.id,
-                    Edge.type == 'LOCATED_IN'
+                    Edge.target_id == facility.id
                 ).all()
 
                 logger.debug(f"Found {len(asset_edges)} assets for facility {facility.label}")
@@ -122,15 +121,18 @@ class ChatHandler:
                         Node, Edge.source_id == Node.id
                     ).filter(
                         Node.type == 'WorkOrder',
-                        Edge.target_id == asset.id,
-                        Edge.type == 'ASSIGNED_TO'
+                        Edge.target_id == asset.id
                     ).all()
 
                     facility_data['assets'].append({
                         'name': asset.label,
                         'status': asset.properties.get('status') if asset.properties else None,
                         'workOrders': [
-                            {'id': wo.source.label, 'status': wo.source.properties.get('status')}
+                            {
+                                'id': wo.source.label,
+                                'status': wo.source.properties.get('status') if wo.source.properties else None,
+                                'type': wo.type
+                            }
                             for wo in asset_work_orders
                         ]
                     })
