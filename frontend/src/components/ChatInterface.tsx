@@ -7,10 +7,8 @@ import {
   Typography,
   List,
   ListItem,
-  ListItemText,
   CircularProgress,
   Collapse,
-  IconButton,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -30,7 +28,6 @@ const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedContext, setExpandedContext] = useState<number | null>(null);
 
   const handleSend = async () => {
@@ -39,7 +36,6 @@ const ChatInterface: React.FC = () => {
     const userMessage = input;
     setInput('');
     setLoading(true);
-    setError(null);
 
     // Add user message
     setMessages(prev => [
@@ -77,7 +73,6 @@ const ChatInterface: React.FC = () => {
       console.error('Chat error:', error);
       const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your request';
 
-      setError(errorMessage);
       setMessages(prev => [
         ...prev,
         {
