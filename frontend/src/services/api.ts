@@ -15,35 +15,31 @@ api.interceptors.response.use(
     response => response,
     error => {
         console.error('API Error:', error.response?.data || error.message);
+        console.error('Full error details:', error);
         if (error.response?.status === 404) {
             console.error('Endpoint not found. Please check the URL and try again.');
+        } else if (error.response?.status === 405) {
+            console.error('Method not allowed. Please check the request method.');
         }
         throw error;
     }
 );
 
-// API endpoints
-export const testAPI = async () => {
-    try {
-        const response = await api.get('/test');
-        return response.data;
-    } catch (error) {
-        console.error('Test API call failed:', error);
-        throw error;
-    }
-};
-
 export const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await api.post('/upload', formData, {
-        headers: {
-            'Content-Type': 'multipart/form-data',
-        },
-    });
-
-    return response.data;
+    try {
+        const response = await axios.post('/api/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Upload failed:', error);
+        throw error;
+    }
 };
 
 export const validateOntology = async (ontology: any) => {
@@ -52,16 +48,11 @@ export const validateOntology = async (ontology: any) => {
 };
 
 export const exportToNeo4j = async (graph: any) => {
-    const response = await api.post('/export-neo4j', {
-        graph,
-    });
-
+    const response = await api.post('/export-neo4j', { graph });
     return response.data;
 };
 
 export const chat = async (query: string) => {
-    const response = await api.post('/chat', {
-        query,
-    });
+    const response = await api.post('/chat', { query });
     return response.data;
 };
