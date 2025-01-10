@@ -87,10 +87,21 @@ class ChatHandler:
             logger.debug(f"Found {len(facility_nodes)} facility nodes")
 
             for facility in facility_nodes:
+                # Get work order count for this facility
+                work_order_count = Edge.query.join(
+                    Node, Edge.source_id == Node.id
+                ).filter(
+                    Node.type == 'WorkOrder',
+                    Edge.target_id == facility.id,
+                    Edge.type == 'ASSIGNED_TO'
+                ).count()
+
+                logger.debug(f"Found {work_order_count} work orders for facility {facility.label}")
+
                 facility_data = {
                     'facility': facility.label,
                     'assets': [],
-                    'workOrderCount': 0
+                    'workOrderCount': work_order_count
                 }
 
                 # Get assets in this facility
@@ -106,20 +117,24 @@ class ChatHandler:
 
                 for edge in asset_edges:
                     asset = edge.source
+                    # Get work orders for this asset
+                    asset_work_orders = Edge.query.join(
+                        Node, Edge.source_id == Node.id
+                    ).filter(
+                        Node.type == 'WorkOrder',
+                        Edge.target_id == asset.id,
+                        Edge.type == 'ASSIGNED_TO'
+                    ).all()
+
                     facility_data['assets'].append({
                         'name': asset.label,
-                        'status': asset.properties.get('status') if asset.properties else None
+                        'status': asset.properties.get('status') if asset.properties else None,
+                        'workOrders': [
+                            {'id': wo.source.label, 'status': wo.source.properties.get('status')}
+                            for wo in asset_work_orders
+                        ]
                     })
 
-                # Count work orders
-                work_order_count = Edge.query.join(
-                    Node, Edge.source_id == Node.id
-                ).filter(
-                    Node.type == 'WorkOrder',
-                    Edge.target_id == facility.id
-                ).count()
-
-                facility_data['workOrderCount'] = work_order_count
                 facilities.append(facility_data)
 
             logger.info(f"Returning context for {len(facilities)} facilities")

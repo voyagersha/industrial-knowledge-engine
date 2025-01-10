@@ -30,6 +30,16 @@ def register_routes(app):
                 logger.error("Invalid file type")
                 return jsonify({'error': 'Only CSV files are supported'}), 400
 
+            # Clear existing data
+            try:
+                Node.query.delete()
+                Edge.query.delete()
+                db.session.commit()
+                logger.info("Cleared existing graph data")
+            except Exception as e:
+                logger.error(f"Error clearing data: {str(e)}")
+                db.session.rollback()
+
             # Process the file
             df = pd.read_csv(file)
             logger.info(f"Successfully read CSV file with {len(df)} rows and columns: {df.columns.tolist()}")
@@ -37,7 +47,15 @@ def register_routes(app):
             # Extract initial ontology
             ontology = extract_ontology(df)
             logger.info(f"Extracted ontology: {len(ontology.get('entities', []))} entities, {len(ontology.get('relationships', []))} relationships")
-            logger.debug(f"Full ontology data: {ontology}")
+
+            # Debug ontology contents
+            for entity in ontology.get('entities', []):
+                if entity[1] == 'WorkOrder':
+                    logger.debug(f"Found WorkOrder entity: {entity}")
+
+            for rel in ontology.get('relationships', []):
+                if 'WorkOrder' in [rel.get('source_type'), rel.get('target_type')]:
+                    logger.debug(f"Found WorkOrder relationship: {rel}")
 
             return jsonify({
                 'message': 'File processed successfully',
