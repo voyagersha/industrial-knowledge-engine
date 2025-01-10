@@ -73,79 +73,55 @@ def register_routes(app):
             graph_data = generate_knowledge_graph(validated_ontology)
             logger.info(f"Generated graph with {len(graph_data.get('nodes', []))} nodes")
 
-            # Automatically export to database
             try:
-                # Clear existing data
-                Node.query.delete()
-                Edge.query.delete()
-                db.session.commit()
-                logger.info("Cleared existing graph data")
-
-                # Create nodes
-                nodes = {}
+                # Store data in PostgreSQL
+                node_mapping = {}
                 for node_data in graph_data.get('nodes', []):
                     node = Node(
-                        label=node_data.get('label', ''),
-                        type=node_data.get('type', 'Unknown'),
+                        label=node_data.get('label'),
+                        type=node_data.get('type'),
                         properties={'id': node_data.get('id')}
                     )
                     db.session.add(node)
-                    nodes[node_data.get('id')] = node
+                    node_mapping[node_data.get('id')] = node
 
-                db.session.flush()  # Flush to get node IDs
-                logger.info(f"Created {len(nodes)} nodes")
+                db.session.flush()
+                logger.info(f"Created {len(node_mapping)} nodes")
 
-                # Create relationships
+                # Create edges
                 edge_count = 0
-                for edge in graph_data.get('edges', []):
-                    source_id = edge.get('source')
-                    target_id = edge.get('target')
-                    if source_id and target_id and source_id in nodes and target_id in nodes:
-                        new_edge = Edge(
-                            source=nodes[source_id],
-                            target=nodes[target_id],
-                            type=edge.get('type', 'Unknown')
+                for edge_data in graph_data.get('edges', []):
+                    source_id = edge_data.get('source')
+                    target_id = edge_data.get('target')
+                    if source_id in node_mapping and target_id in node_mapping:
+                        edge = Edge(
+                            source=node_mapping[source_id],
+                            target=node_mapping[target_id],
+                            type=edge_data.get('type', 'relates_to')
                         )
-                        db.session.add(new_edge)
+                        db.session.add(edge)
                         edge_count += 1
 
                 db.session.commit()
-                logger.info(f"Created {edge_count} relationships")
+                logger.info(f"Created {edge_count} edges")
+
+                # Verify data was stored
+                stored_nodes = Node.query.count()
+                stored_edges = Edge.query.count()
+                logger.info(f"Database verification - Nodes: {stored_nodes}, Edges: {stored_edges}")
+
+                return jsonify({
+                    'message': 'Ontology validated and stored successfully',
+                    'graph': graph_data
+                })
 
             except Exception as e:
                 logger.error(f"Database error: {str(e)}", exc_info=True)
                 db.session.rollback()
                 raise
 
-            return jsonify({
-                'message': 'Ontology validated and stored successfully',
-                'graph': graph_data
-            })
-
         except Exception as e:
             logger.error(f"Error validating ontology: {str(e)}", exc_info=True)
-            return jsonify({'error': str(e)}), 500
-
-    @app.route('/api/export-neo4j', methods=['POST', 'OPTIONS'])
-    def export_to_neo4j():
-        """Export graph to Neo4j database."""
-        logger.info("Export to Neo4j endpoint hit")
-
-        # Handle OPTIONS request for CORS preflight
-        if request.method == 'OPTIONS':
-            return '', 204
-
-        try:
-            data = request.json
-            if not data or 'graph' not in data:
-                return jsonify({'error': 'No graph data provided'}), 400
-
-            return jsonify({
-                'message': 'Graph exported successfully'
-            })
-
-        except Exception as e:
-            logger.error(f"Error exporting to Neo4j: {str(e)}", exc_info=True)
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/chat', methods=['POST', 'OPTIONS'])
